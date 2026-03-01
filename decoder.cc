@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -76,7 +76,7 @@ bool Range_decoder::read_block()
   if( !at_stream_end )
     {
     stream_pos = readblock( infd, buffer, buffer_size );
-    if( stream_pos != buffer_size && errno ) throw Error( read_error_msg );
+    if( stream_pos != buffer_size && errno ) throw Error( rd_err_msg );
     at_stream_end = stream_pos < buffer_size;
     partial_member_pos += pos;
     pos = 0;
@@ -140,8 +140,9 @@ bool LZ_decoder::check_trailer( const Pretty_print & pp ) const
     error = true;
     if( verbosity >= 0 )
       { pp();
-        std::fprintf( stderr, "Data size mismatch; stored %llu (0x%llX), computed %llu (0x%llX)\n",
-                      td_size, td_size, data_size, data_size ); }
+        std::fprintf( stderr, "Data size mismatch; stored %s (0x%llX), computed %s (0x%llX)\n",
+                      format_num3( td_size ), td_size,
+                      format_num3( data_size ), data_size ); }
     }
   const unsigned long long member_size = rdec.member_position();
   const unsigned long long tm_size = trailer.member_size();
@@ -150,23 +151,22 @@ bool LZ_decoder::check_trailer( const Pretty_print & pp ) const
     error = true;
     if( verbosity >= 0 )
       { pp();
-        std::fprintf( stderr, "Member size mismatch; stored %llu (0x%llX), computed %llu (0x%llX)\n",
-                      tm_size, tm_size, member_size, member_size ); }
+        std::fprintf( stderr, "Member size mismatch; stored %s (0x%llX), computed %s (0x%llX)\n",
+                      format_num3( tm_size ), tm_size,
+                      format_num3( member_size ), member_size ); }
     }
   if( error ) return false;
   if( verbosity >= 2 )
     {
     if( verbosity >= 4 ) show_header( dictionary_size );
-    if( data_size == 0 || member_size == 0 )
-      std::fputs( "no data compressed. ", stderr );
-    else
-      std::fprintf( stderr, "%6.3f:1, %5.2f%% ratio, %5.2f%% saved. ",
+    if( verbosity >= 3 && data_size > 0 && member_size > 0 )
+      std::fprintf( stderr, "%6.3f:1, %5.2f%% ratio, %5.2f%% saved, ",
                     (double)data_size / member_size,
                     ( 100.0 * member_size ) / data_size,
                     100.0 - ( ( 100.0 * member_size ) / data_size ) );
     if( verbosity >= 4 ) std::fprintf( stderr, "CRC %08X, ", td_crc );
-    if( verbosity >= 3 )
-      std::fprintf( stderr, "%9llu out, %8llu in. ", data_size, member_size );
+    std::fprintf( stderr, "%11s out, %10s in. ",
+                  format_num3( data_size ), format_num3( member_size ) );
     }
   if( rdec.get_code() != 0 && verbosity >= 1 )
     {			// corruption in the last 4 bytes of the EOS marker
@@ -195,10 +195,10 @@ int LZ_decoder::decode_member( const Pretty_print & pp,
   Bit_model bm_align[dis_align_size];
   Len_model match_len_model;
   Len_model rep_len_model;
-  unsigned rep0 = 0;		// rep[0-3] latest four distances
-  unsigned rep1 = 0;		// used for efficient coding of
-  unsigned rep2 = 0;		// repeated distances
-  unsigned rep3 = 0;
+  unsigned dis0 = 0;		// dis[0-3] latest four distances
+  unsigned dis1 = 0;		// used for efficient coding of
+  unsigned dis2 = 0;		// repeated distances
+  unsigned dis3 = 0;
   State state;
 
   if( !rdec.load( ignore_nonzero ) ) return 5;
@@ -212,7 +212,7 @@ int LZ_decoder::decode_member( const Pretty_print & pp,
       if( state.is_char_set_char() )
         put_byte( rdec.decode_tree8( bm ) );
       else
-        put_byte( rdec.decode_matched( bm, peek( rep0 ) ) );
+        put_byte( rdec.decode_matched( bm, peek( dis0 ) ) );
       continue;
       }
     // match or repeated match
@@ -222,61 +222,61 @@ int LZ_decoder::decode_member( const Pretty_print & pp,
       if( rdec.decode_bit( bm_rep0[state()] ) == 0 )		// 3rd bit
         {
         if( rdec.decode_bit( bm_len[state()][pos_state] ) == 0 ) // 4th bit
-          { state.set_shortrep(); put_byte( peek( rep0 ) ); continue; }
+          { state.set_shortrep(); put_byte( peek( dis0 ) ); continue; }
         }
       else
         {
         unsigned distance;
         if( rdec.decode_bit( bm_rep1[state()] ) == 0 )		// 4th bit
-          distance = rep1;
+          distance = dis1;
         else
           {
           if( rdec.decode_bit( bm_rep2[state()] ) == 0 )	// 5th bit
-            distance = rep2;
+            distance = dis2;
           else
-            { distance = rep3; rep3 = rep2; }
-          rep2 = rep1;
+            { distance = dis3; dis3 = dis2; }
+          dis2 = dis1;
           }
-        rep1 = rep0;
-        rep0 = distance;
+        dis1 = dis0;
+        dis0 = distance;
         }
       state.set_rep();
       len = rdec.decode_len( rep_len_model, pos_state );
       }
     else					// match
       {
-      rep3 = rep2; rep2 = rep1; rep1 = rep0;
+      dis3 = dis2; dis2 = dis1; dis1 = dis0;
       len = rdec.decode_len( match_len_model, pos_state );
-      rep0 = rdec.decode_tree6( bm_dis_slot[get_len_state(len)] );
-      if( rep0 >= start_dis_model )
+      dis0 = rdec.decode_tree6( bm_dis_slot[get_len_state(len)] );
+      if( dis0 >= start_dis_model )
         {
-        const unsigned dis_slot = rep0;
+        const unsigned dis_slot = dis0;
         const int direct_bits = ( dis_slot >> 1 ) - 1;
-        rep0 = ( 2 | ( dis_slot & 1 ) ) << direct_bits;
+        dis0 = ( 2 | ( dis_slot & 1 ) ) << direct_bits;
         if( dis_slot < end_dis_model )
-          rep0 += rdec.decode_tree_reversed( bm_dis + ( rep0 - dis_slot ),
+          dis0 += rdec.decode_tree_reversed( bm_dis + ( dis0 - dis_slot ),
                                              direct_bits );
         else
           {
-          rep0 += rdec.decode( direct_bits - dis_align_bits ) << dis_align_bits;
-          rep0 += rdec.decode_tree_reversed4( bm_align );
-          if( rep0 == 0xFFFFFFFFU )		// marker found
+          dis0 += rdec.decode( direct_bits - dis_align_bits ) << dis_align_bits;
+          dis0 += rdec.decode_tree_reversed4( bm_align );
+          if( dis0 == 0xFFFFFFFFU )		// marker found
             {
             rdec.normalize();
             flush_data();
             if( len == min_match_len )		// End Of Stream marker
-              { if( check_trailer( pp ) ) return 0; else return 3; }
+              return check_trailer( pp ) ? 0 : 3;
             if( verbosity >= 0 ) { pp();
               std::fprintf( stderr, "Unsupported marker code '%d'\n", len ); }
             return 4;
             }
           }
         }
-      state.set_match();
-      if( rep0 >= dictionary_size || ( rep0 >= pos && !pos_wrapped ) )
+      if( dis0 >= dictionary_size || ( dis0 >= pos && !pos_wrapped ) )
         { flush_data(); return 1; }
+      state.set_match();
       }
-    copy_block( rep0, len );
+    copy_block( dis0, len );
     }
   flush_data();
   return 2;

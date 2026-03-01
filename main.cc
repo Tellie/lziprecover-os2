@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -98,12 +98,13 @@ const struct { const char * from; const char * to; } known_extensions[] = {
   { ".tlz", ".tar" },
   { 0,      0      } };
 
-enum Mode { m_none, m_alone_to_lz, m_byte_repair, m_check, m_debug_byte_repair,
-            m_debug_decompress, m_debug_delay, m_decompress, m_dump,
-            m_fec_create, m_fec_repair, m_fec_test, m_fec_list, m_fec_dc,
-            m_fec_dz, m_fec_dZ, m_list, m_md5sum, m_merge, m_nonzero_repair,
-            m_nrep_stats, m_range_dec, m_remove, m_reproduce, m_show_packets,
-            m_split, m_strip, m_test, m_unzcrash_bit, m_unzcrash_block };
+enum Mode { m_none, m_alone_to_lz, m_append, m_byte_repair, m_check,
+            m_debug_byte_repair, m_debug_decompress, m_debug_delay,
+            m_decompress, m_dump, m_fec_create, m_fec_repair, m_fec_test,
+            m_fec_list, m_fec_dc, m_fec_df, m_fec_dz, m_fec_dZ, m_list,
+            m_md5sum, m_merge, m_nonzero_repair, m_nrep_stats, m_range_dec,
+            m_remove, m_reproduce, m_show_packets, m_split, m_strip, m_test,
+            m_unzcrash_bit, m_unzcrash_block };
 
 /* Variables used in signal handler context.
    They are not declared volatile because the handler never returns. */
@@ -112,87 +113,85 @@ bool delete_output_on_interrupt = false;
 
 void show_help( const long num_online )
   {
-  std::printf( "Lziprecover is a data recovery tool and decompressor for files in the lzip\n"
-               "compressed data format (.lz). Lziprecover also provides Forward Error\n"
-               "Correction (FEC) able to repair any kind of file.\n"
-               "\nWith the help of lziprecover, losing an entire archive just because of a\n"
-               "corrupt byte near the beginning is a thing of the past.\n"
-               "\nLziprecover can remove the damaged members from multimember files, for\n"
-               "example multimember tar.lz archives.\n"
-               "\nLziprecover provides random access to the data in multimember files; it only\n"
-               "decompresses the members containing the desired data.\n"
-               "\nLziprecover is not a replacement for regular backups, but a last line of\n"
-               "defense for the case where the backups are also damaged.\n"
-               "\nUsage: %s [options] [files]\n", invocation_name );
+  std::fputs(
+    "Lziprecover is a data recovery tool and decompressor for files in the lzip\n"
+    "compressed data format (.lz). Lziprecover also provides Forward Error\n"
+    "Correction files (.fec) that can be used to repair any kind of file, not\n"
+    "only lzip files. A fec file can be used as recovery record for a tar.lz\n"
+    "archive.\n"
+    "\nLziprecover can remove the damaged members from multimember files, for\n"
+    "example multimember tar.lz archives.\n"
+    "\nLziprecover provides random access to the data in multimember files; it only\n"
+    "decompresses the members containing the desired data.\n", stdout );
+  std::printf( "\nUsage: %s [options] [files]\n", invocation_name );
   std::printf( "\nOptions:\n"
-               "  -h, --help                    display this help and exit\n"
-               "  -V, --version                 output version information and exit\n"
-               "  -a, --trailing-error          exit with error status if trailing data\n"
-               "  -A, --alone-to-lz             convert lzma-alone files to lzip format\n"
-               "  -b, --block-size=<bytes>      make FEC block size a multiple of <bytes>\n"
-               "  -B, --byte-repair             try to repair a corrupt byte in file\n"
-               "  -c, --stdout                  write to standard output, keep input files\n"
-               "  -d, --decompress              decompress, test compressed file integrity\n"
-               "  -D, --range-decompress=<n-m>  decompress a range of bytes to stdout\n"
-               "  -e, --reproduce               try to reproduce a zeroed sector in file\n"
-               "      --lzip-level=N|a|m[N]     reproduce one level, all, or match length\n"
-               "      --lzip-name=<name>        name of lzip executable for --reproduce\n"
-               "      --reference-file=<file>   reference file for --reproduce\n"
-               "  -f, --force                   overwrite existing output files\n"
-               "  -F, --fec=c[N]|r|t|l          create, repair, test, list (using) fec file\n"
-               "  -0 .. -9                      set FEC fragmentation level [default 9]\n"
-               "      --fec-file=<file>[/]      read fec file from <file> or directory\n"
-               "  -i, --ignore-errors           ignore non-fatal errors\n"
-               "  -k, --keep                    keep (don't delete) input files\n"
-               "  -l, --list                    print (un)compressed file sizes\n"
-               "  -m, --merge                   repair errors in file using several copies\n"
-               "  -n, --threads=<n>             set number of threads for fec create [%ld]\n"
-               "  -o, --output=<file>[/]        place the output into <file> or directory\n"
-               "  -q, --quiet                   suppress all messages\n"
-               "  -r, --recursive               (fec) operate recursively on directories\n"
-               "  -R, --dereference-recursive   (fec) recursively follow symbolic links\n"
-               "  -s, --split                   split multimember file in single-member files\n"
-               "  -t, --test                    test compressed file integrity\n"
-               "  -v, --verbose                 be verbose (a 2nd -v gives more)\n"
-               "      --dump=<list>:d:e:t       dump members, damaged/empty, tdata to stdout\n"
-               "      --remove=<list>:d:e:t     remove members, tdata from files in place\n"
-               "      --strip=<list>:d:e:t      copy files to stdout stripping members given\n"
-               "      --loose-trailing          allow trailing data seeming corrupt header\n"
-               "      --nonzero-repair          repair in place a nonzero first LZMA byte\n",
-               num_online );
-  if( verbosity >= 1 )
-    {
-    std::printf( "\nDebug options for experts:\n"
-                 "  -E, --debug-reproduce=<range>[,ss]  set range to 0 and try to reproduce file\n"
-                 "  -F, --fec=dc<n>                   test repair combinations of n zeroed blocks\n"
-                 "  -F, --fec=dz<range>[:<range>]...  test repair zeroed block(s) at range(s)\n"
-                 "  -F, --fec=dZ<size>[,<delta>]      test repair zeroed blocks of size <size>\n"
-                 "  -M, --md5sum                      print the MD5 digests of the input files\n"
-                 "  -S, --nrep-stats[=<val>]          print stats of N-byte repeated sequences\n"
-                 "  -U, --unzcrash=1|B<size>          test 1-bit or block errors in input file\n"
-                 "  -W, --debug-decompress=<pos>,<val>  set pos to val and decompress to stdout\n"
-                 "  -X, --show-packets[=<pos>,<val>]  show in stdout the decoded LZMA packets\n"
-                 "  -Y, --debug-delay=<range>         find max error detection delay in <range>\n"
-                 "  -Z, --debug-byte-repair=<pos>,<val>  test repair one-byte error at <pos>\n"
-                 "      --check=<size>                check creation of FEC decode matrix\n"
-                 "      --debug=<level>               print parallel FEC statistics to stderr\n"
-                 "      --gf16                        use GF(2^16) to create fec files\n"
-                 "      --random                      create fec files with random block numbers\n" );
-    }
-  std::printf( "\nIf no file names are given, or if a file is '-', lziprecover decompresses\n"
-               "from standard input to standard output.\n"
-               "Numbers may be followed by a multiplier: k = kB = 10^3 = 1000,\n"
-               "Ki = KiB = 2^10 = 1024, M = 10^6, Mi = 2^20, G = 10^9, Gi = 2^30, etc...\n"
-               "The argument to --fec=create may be a number of blocks (-Fc20), a\n"
-               "percentage (-Fc5%%), or a size in bytes (-Fc10KiB).\n"
-               "\nTo extract all the files from archive 'foo.tar.lz', use the commands\n"
-               "'tar -xf foo.tar.lz' or 'lziprecover -cd foo.tar.lz | tar -xf -'.\n"
-               "\nExit status: 0 for a normal exit, 1 for environmental problems\n"
-               "(file not found, invalid command-line options, I/O errors, etc), 2 to\n"
-               "indicate a corrupt or invalid input file, 3 for an internal consistency\n"
-               "error (e.g., bug) which caused lziprecover to panic.\n"
-               "\nReport bugs to lzip-bug@nongnu.org\n"
-               "Lziprecover home page: http://www.nongnu.org/lzip/lziprecover.html\n" );
+    "  -h, --help                    display this help and exit\n"
+    "  -V, --version                 output version information and exit\n"
+    "  -a, --trailing-error          exit with error status if trailing data\n"
+    "  -A, --alone-to-lz             convert lzma-alone files to lzip format\n"
+    "  -b, --block-size=<bytes>      make FEC block size a multiple of <bytes>\n"
+    "  -B, --byte-repair             try to repair a corrupt byte in file\n"
+    "  -c, --stdout                  write to standard output, keep input files\n"
+    "  -d, --decompress              decompress, test compressed file integrity\n"
+    "  -D, --range-decompress=<n-m>  decompress a range of bytes to stdout\n"
+    "  -e, --reproduce               try to reproduce a zeroed sector in file\n"
+    "      --lzip-level=N|a|m[N]     reproduce one level, all, or match length\n"
+    "      --lzip-name=<name>        name of lzip executable for --reproduce\n"
+    "      --reference-file=<file>   reference file for --reproduce\n"
+    "  -f, --force                   overwrite existing output files\n"
+    "  -F, --fec=c[N]|r|t|l          create, repair, test, list (using) fec file\n"
+    "  -0 .. -9                      set FEC fragmentation level [default 9]\n"
+    "      --fec-file=<file>[/]      read fec file from <file> or directory\n"
+    "  -i, --ignore-errors           ignore non-fatal errors\n"
+    "  -k, --keep                    keep (don't delete) input files\n"
+    "  -l, --list                    print (un)compressed file sizes\n"
+    "  -m, --merge                   repair errors in file using several copies\n"
+    "  -n, --threads=<n>             set number of threads for fec create [%ld]\n"
+    "  -o, --output=<file>[/]        place the output into <file> or directory\n"
+    "  -q, --quiet                   suppress all messages\n"
+    "  -r, --recursive               (fec) operate recursively on directories\n"
+    "  -R, --dereference-recursive   (fec) recursively follow symbolic links\n"
+    "  -s, --split                   split multimember file in single-member files\n"
+    "  -t, --test                    test compressed file integrity\n"
+    "  -v, --verbose                 be verbose (a 2nd -v gives more)\n"
+    "      --append=<file>           append <file> as trailing data\n"
+    "      --dump=<list>:d:e:t       dump members, damaged, empty, tdata to stdout\n"
+    "      --remove=<list>:d:e:t     remove members, tdata from files in place\n"
+    "      --strip=<list>:d:e:t      copy files to stdout stripping members given\n"
+    "      --loose-trailing          allow trailing data seeming corrupt header\n"
+    "      --nonzero-repair          repair in place a nonzero first LZMA byte\n", num_online );
+  if( verbosity >= 1 ) std::fputs( "\nDebug options for experts:\n"
+    "  -E, --debug-reproduce=<range>[,ss]  set range to 0 and try to reproduce file\n"
+    "  -F, --fec=dc<n>                   test repair combinations of n zeroed blocks\n"
+    "  -F, --fec=dz<range>[:<range>]...  test repair zeroed block(s) at range(s)\n"
+    "  -F, --fec=dZ<size>[,<delta>]      test repair zeroed blocks of size <size>\n"
+    "  -M, --md5sum                      print the MD5 digests of the input files\n"
+    "  -S, --nrep-stats[=<val>]          print stats of N-byte repeated sequences\n"
+    "  -U, --unzcrash=1|B<size>          test 1-bit or block errors in input file\n"
+    "  -W, --debug-decompress=<pos>,<val>  set pos to val and decompress to stdout\n"
+    "  -X, --show-packets[=<pos>,<val>]  show in stdout the decoded LZMA packets\n"
+    "  -Y, --debug-delay=<range>         find max error detection delay in <range>\n"
+    "  -Z, --debug-byte-repair=<pos>,<val>  test repair one-byte error at <pos>\n"
+    "      --check=<size>                check creation of FEC decode matrix\n"
+    "      --debug=<level>               print parallel FEC statistics to stderr\n"
+    "      --gf16                        use GF(2^16) to create fec files\n"
+    "      --random                      create fec files with random block numbers\n", stdout );
+  std::fputs(
+    "\nIf no file names are given, or if a file is '-', lziprecover decompresses\n"
+    "from standard input to standard output.\n"
+    "Numbers may contain underscore separators between groups of digits and\n"
+    "may be followed by a SI or binary multiplier: 1_234_567kB, 4KiB.\n"
+    "The argument to --fec=create may be a number of blocks (-Fc20), a\n"
+    "percentage (-Fc5%), or a size in bytes (-Fc10KiB).\n"
+    "\nTo extract all the files from archive 'foo.tar.lz', use the commands\n"
+    "'tar -xf foo.tar.lz' or 'lziprecover -cd foo.tar.lz | tar -xf -'.\n"
+    "\n*Exit status*\n"
+    "0 for a normal exit, 1 for environmental problems(file not found, invalid\n"
+    "command-line options, I/O errors, etc), 2 to indicate a corrupt or invalid\n"
+    "input file, 3 for an internal consistency error (e.g., bug) which caused\n"
+    "lziprecover to panic.\n"
+    "\nReport bugs to lzip-bug@nongnu.org\n"
+    "Lziprecover home page: http://www.nongnu.org/lzip/lziprecover.html\n", stdout );
   }
 
 } // end namespace
@@ -315,13 +314,13 @@ const char * parse_range( const char * const arg, const char * const pn,
   {
   const char * tail = arg;
   long long value =
-    ( arg[0] == ',' ) ? 0 : getnum( arg, pn, 0, 0, INT64_MAX - 1, &tail );
-  if( tail[0] == 0 || tail[0] == ',' || tail[0] == '-' || tail[0] == ':' )
+    ( *arg == ',' ) ? 0 : getnum( arg, pn, 0, 0, INT64_MAX - 1, &tail );
+  if( *tail == 0 || *tail == ',' || *tail == '-' || *tail == ':' )
     {
     range.pos( value );
-    if( tail[0] == 0 || tail[0] == ':' )
+    if( *tail == 0 || *tail == ':' )
       { range.size( INT64_MAX - value ); return tail; }
-    const bool is_size = tail[0] == ',';
+    const bool is_size = *tail == ',';
     if( sector_sizep && tail[1] == ',' ) { value = INT64_MAX - value; ++tail; }
     else value = getnum( tail + 1, pn, 0, 1, INT64_MAX, &tail );	// size
     if( !is_size && value <= range.pos() )
@@ -330,7 +329,7 @@ const char * parse_range( const char * const arg, const char * const pn,
     if( INT64_MAX - value >= range.pos() )
       {
       range.size( value );
-      if( sector_sizep && tail[0] == ',' )
+      if( sector_sizep && *tail == ',' )
         *sector_sizep = getnum( tail + 1, pn, 0, 8, INT_MAX, &tail );
       return tail;
       }
@@ -397,20 +396,16 @@ void no_to_stdout( const bool to_stdout )
 
 void one_file( const int files )
   {
-  if( files != 1 )
-    {
-    show_error( "You must specify exactly 1 file.", 0, true );
-    std::exit( 1 );
-    }
+  if( files == 1 ) return;
+  show_error( "You must specify exactly 1 file.", 0, true );
+  std::exit( 1 );
   }
 
 void at_least_one_file( const int files )
   {
-  if( files < 1 )
-    {
-    show_error( "You must specify at least 1 file.", 0, true );
-    std::exit( 1 );
-    }
+  if( files >= 1 ) return;
+  show_error( "You must specify at least 1 file.", 0, true );
+  std::exit( 1 );
   }
 
 
@@ -430,21 +425,20 @@ bool compare_prefix( const char * const arg, const char * const target,
                      const char * const option_name = 0,
                      unsigned long * const fb_or_pctp = 0, char * fctypep = 0 )
   {
-  if( arg[0] == target[0] )
+  if( *arg && *arg == *target )
     for( int i = 1; i < INT_MAX; ++i )
       {
       if( arg[i] == 0 ) return true;
       if( fb_or_pctp && std::isdigit( arg[i] ) )
         {
         const char * tail = arg + i;
-        const int llimit = std::strchr( tail, '.' ) ? 0 : 1;
-        *fb_or_pctp = getnum( tail, option_name, 0, llimit, LONG_MAX, &tail );
+        *fb_or_pctp = getnum( tail, option_name, 0, 0, LONG_MAX, &tail );
         if( *tail == 0 )
           { if( tail[-1] == 'B' ) { *fctypep = fc_bytes; return true; }
             if( std::isdigit( tail[-1] ) )
-              { if( *fb_or_pctp <= max_nk16 )
+              { if( *fb_or_pctp <= max_nk16 )			// else error
                   { *fctypep = fc_blocks; return true; }
-                getnum( arg + 1, option_name, 0, 1, max_nk16 ); } }
+                getnum( arg + 1, option_name, 0, 0, max_nk16 ); } }
         else if( *fb_or_pctp <= 100 && std::isdigit( tail[-1] ) )
           { if( *tail == '%' && tail[1] == 0 )
               { *fb_or_pctp *= 1000; *fctypep = fc_percent; return true; }
@@ -454,8 +448,8 @@ bool compare_prefix( const char * const arg, const char * const target,
                 if( *tail >= '5' && *tail <= '9' ) { ++tail; ++*fb_or_pctp; }
                 while( std::isdigit( *tail ) ) { ++tail;
                   if( *fb_or_pctp == 0 && tail[-1] > '0' ) *fb_or_pctp = 1; }
-                if( *tail == '%' && tail[1] == 0 && *fb_or_pctp <= 100000 &&
-                    *fb_or_pctp > 0 ) { *fctypep = fc_percent; return true; } } }
+                if( *tail == '%' && tail[1] == 0 && *fb_or_pctp <= 100000 )
+                  { *fctypep = fc_percent; return true; } } }
         return false;
         }
       if( arg[i] != target[i] ) break;
@@ -477,16 +471,18 @@ void parse_fec( const char * const arg, const char * const option_name,
     set_mode( program_mode, m_fec_test );
   else if( compare_prefix( arg, "list" ) )
     set_mode( program_mode, m_fec_list );
-  else if( arg[0] == 'd' && arg[1] == 'c' )
+  else if( *arg == 'd' && arg[1] == 'c' )
     { const char * tail = arg + 2;
       cblocks = getnum( tail, option_name, 0, 1, max_nk16, &tail );
       if( *tail != 0 )
         { show_option_error( arg, inv_arg_msg, option_name ); std::exit( 1 ); }
       set_mode( program_mode, m_fec_dc ); }
-  else if( arg[0] == 'd' && arg[1] == 'z' )
+  else if( *arg == 'd' && arg[1] == 'f' )
+    set_mode( program_mode, m_fec_df );
+  else if( *arg == 'd' && arg[1] == 'z' )
     { parse_range_vector( arg + 2, option_name, range_vector );
       set_mode( program_mode, m_fec_dz ); }
-  else if( arg[0] == 'd' && arg[1] == 'Z' )
+  else if( *arg == 'd' && arg[1] == 'Z' )
     { const char * tail = arg + 2;
       sector_size = getnum( tail, option_name, 0, 1, INT_MAX, &tail );
       if( *tail == 0 ) delta = sector_size;
@@ -503,8 +499,8 @@ void parse_fec( const char * const arg, const char * const option_name,
 void parse_u( const char * const arg, const char * const option_name,
               Mode & program_mode, int & sector_size )
   {
-  if( arg[0] == '1' ) set_mode( program_mode, m_unzcrash_bit );
-  else if( arg[0] == 'B' )
+  if( *arg == '1' ) set_mode( program_mode, m_unzcrash_bit );
+  else if( *arg == 'B' )
     { set_mode( program_mode, m_unzcrash_block );
       sector_size = getnum( arg + 1, option_name, 0, 1, INT_MAX ); }
   else
@@ -589,7 +585,7 @@ int open_truncable_stream( const char * const name,
   {
   int fd = open( name, O_RDWR | O_BINARY );
   if( fd < 0 )
-    show_file_error( name, "Can't open input file", errno );
+    show_file_error( name, "Can't open file in R/W mode", errno );
   else
     {
     const int i = fstat( fd, in_statsp );
@@ -855,9 +851,9 @@ int decompress( const unsigned long long cfile_size, const int infd,
       if( verbosity >= 0 && result <= 2 )
         {
         pp();
-        std::fprintf( stderr, "%s at pos %llu\n", ( result == 2 ) ?
+        std::fprintf( stderr, "%s at pos %s\n", ( result == 2 ) ?
                       "File ends unexpectedly" : "Decoder error",
-                      partial_file_pos );
+                      format_num3( partial_file_pos ) );
         }
       else if( result == 5 ) pp( nonzero_msg );
       retval = 2;
@@ -871,7 +867,7 @@ int decompress( const unsigned long long cfile_size, const int infd,
   if( verbosity == 1 && retval == 0 )
     std::fputs( testing ? "ok\n" : "done\n", stderr );
   if( empty && multi && retval == 0 )
-    { show_file_error( pp.name(), empty_msg ); retval = 2; }
+    { show_file_error( pp.name(), empty_member_msg ); retval = 2; }
   if( retval == 2 && cl_opts.ignore_errors ) retval = 0;
   return retval;
   }
@@ -897,6 +893,9 @@ std::string insert_fixed( std::string name, const bool append_lz )
   else if( name.size() > 3 && name.compare( name.size() - 3, 3, ".lz" ) == 0 )
     name.insert( name.size() - 3, "_fixed" );
   else if( name.size() > 4 && name.compare( name.size() - 4, 4, ".tlz" ) == 0 )
+    name.insert( name.size() - 4, "_fixed" );
+  else if( name.size() > 4 && !append_lz &&
+           name.compare( name.size() - 4, 4, ".tar" ) == 0 )
     name.insert( name.size() - 4, "_fixed" );
   else if( append_lz ) name += "_fixed.lz";
   else name += "_fixed";
@@ -951,6 +950,7 @@ int main( const int argc, const char * const argv[] )
   int sector_size = INT_MAX;		// default larger than practical range
   Bad_byte bad_byte;
   Member_list member_list;
+  std::string append_filename;
   std::string cl_fec_filename;
   std::string default_output_filename;
   const char * lzip_name = "lzip";		// default is lzip
@@ -977,7 +977,7 @@ int main( const int argc, const char * const argv[] )
   bool to_stdout = false;
   if( argc > 0 ) invocation_name = argv[0];
 
-  enum { opt_chk = 256, opt_dbg, opt_du, opt_ff, opt_g16, opt_lt,
+  enum { opt_app = 256, opt_chk, opt_dbg, opt_du, opt_ff, opt_g16, opt_lt,
          opt_lzl, opt_lzn, opt_nzr, opt_ref, opt_rem, opt_rnd, opt_st };
   const Arg_parser::Option options[] =
     {
@@ -1024,6 +1024,7 @@ int main( const int argc, const char * const argv[] )
     { 'X', "show-packets",          Arg_parser::maybe },
     { 'Y', "debug-delay",           Arg_parser::yes },
     { 'Z', "debug-byte-repair",     Arg_parser::yes },
+    { opt_app, "append",            Arg_parser::yes },
     { opt_chk, "check",             Arg_parser::yes },
     { opt_dbg, "debug",             Arg_parser::yes },
     { opt_du,  "dump",              Arg_parser::yes },
@@ -1088,7 +1089,7 @@ int main( const int argc, const char * const argv[] )
       case 'r': recursive = 1; break;
       case 'R': recursive = 2; break;
       case 's': set_mode( program_mode, m_split ); break;
-      case 'S': if( arg[0] ) repeated_byte = getnum( arg, pn, 0, 0, 255 );
+      case 'S': if( *arg ) repeated_byte = getnum( arg, pn, 0, 0, 255 );
                 set_mode( program_mode, m_nrep_stats ); break;
       case 't': set_mode( program_mode, m_test ); break;
       case 'U': parse_u( arg, pn, program_mode, sector_size ); break;
@@ -1097,11 +1098,13 @@ int main( const int argc, const char * const argv[] )
       case 'W': set_mode( program_mode, m_debug_decompress );
                 bad_byte.parse_bb( arg, pn ); break;
       case 'X': set_mode( program_mode, m_show_packets );
-                if( arg[0] ) { bad_byte.parse_bb( arg, pn ); } break;
+                if( *arg ) { bad_byte.parse_bb( arg, pn ); } break;
       case 'Y': set_mode( program_mode, m_debug_delay );
                 parse_range( arg, pn, range ); break;
       case 'Z': set_mode( program_mode, m_debug_byte_repair );
                 bad_byte.parse_bb( arg, pn ); break;
+      case opt_app: set_mode( program_mode, m_append );
+                    append_filename = sarg; break;
       case opt_chk: set_mode( program_mode, m_check );
                     cblocks = getnum( arg, pn, 0, 1, max_k16 ); break;
       case opt_dbg: debug_level = getnum( arg, pn, 0, 0, 3 ); break;
@@ -1148,6 +1151,9 @@ int main( const int argc, const char * const argv[] )
     {
     case m_none: internal_error( "invalid operation." ); break;
     case m_alone_to_lz: break;
+    case m_append:
+      at_least_one_file( filenames.size() );
+      return append_tdata( filenames, append_filename, cl_opts, force );
     case m_byte_repair:
       one_file( filenames.size() ); no_to_stdout( to_stdout );
       return byte_repair( filenames[0], default_output_filename, cl_opts,
@@ -1186,6 +1192,9 @@ int main( const int argc, const char * const argv[] )
     case m_fec_dc:
       one_file( filenames.size() );
       return fec_dc( filenames[0], cl_fec_filename, cblocks );
+    case m_fec_df:
+      if( filenames.empty() ) filenames.push_back("-");
+      return fec_df( filenames );
     case m_fec_dz:
       one_file( filenames.size() );
       return fec_dz( filenames[0], cl_fec_filename, range_vector );
@@ -1262,7 +1271,7 @@ int main( const int argc, const char * const argv[] )
 
   Pretty_print pp( filenames );
 
-  int failed_tests = 0;
+  unsigned failed_tests = 0;
   int retval = 0;
   const bool one_to_one = !to_stdout && program_mode != m_test && !to_file;
   bool stdin_used = false;
@@ -1344,7 +1353,7 @@ int main( const int argc, const char * const argv[] )
     set_retval( retval, 1 );
     }
   if( failed_tests > 0 && verbosity >= 1 && filenames.size() > 1 )
-    std::fprintf( stderr, "%s: warning: %d %s failed the test.\n",
+    std::fprintf( stderr, "%s: warning: %u %s failed the test.\n",
                   program_name, failed_tests,
                   ( failed_tests == 1 ) ? "file" : "files" );
   return retval;

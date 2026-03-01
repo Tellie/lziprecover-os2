@@ -6,19 +6,19 @@
 @finalout
 @c %**end of header
 
-@set UPDATED 8 January 2025
-@set VERSION 1.25
+@set UPDATED 8 February 2026
+@set VERSION 1.26
 
 @dircategory Compression
 @direntry
-* Lziprecover: (lziprecover).   Data recovery tool for the lzip format
+* Lziprecover: (lziprecover).   Data recovery tool
 @end direntry
 
 
 @ifnothtml
 @titlepage
 @title Lziprecover
-@subtitle Data recovery tool for the lzip format
+@subtitle Data recovery tool
 @subtitle for Lziprecover version @value{VERSION}, @value{UPDATED}
 @author by Antonio Diaz Diaz
 
@@ -55,7 +55,7 @@ This manual is for Lziprecover (version @value{VERSION}, @value{UPDATED}).
 @end menu
 
 @sp 1
-Copyright @copyright{} 2009-2025 Antonio Diaz Diaz.
+Copyright @copyright{} 2009-2026 Antonio Diaz Diaz.
 
 This manual is free documentation: you have unlimited permission to copy,
 distribute, and modify it.
@@ -69,7 +69,9 @@ distribute, and modify it.
 @uref{http://www.nongnu.org/lzip/lziprecover.html,,Lziprecover}
 is a data recovery tool and decompressor for files in the lzip
 compressed data format (.lz). Lziprecover also provides Forward Error
-Correction (FEC) able to repair any kind of file.
+Correction files (.fec) that can be used to repair any kind of file, not
+only lzip files. A fec file can be used as recovery record for a tar.lz
+archive.
 
 Lziprecover is able to repair slightly damaged lzip files (up to one
 single-byte error per member), produce a correct file by merging the good
@@ -113,11 +115,13 @@ Lziprecover is able to recover or decompress files produced by any of the
 compressors in the lzip family: lzip, plzip, minilzip/lzlib, clzip, and
 pdlzip.
 
+@cindex ddrescue
 GNU ddrescue provides data recovery capabilities which nicely complement
 those of lziprecover. If the cause of file corruption is a damaged medium,
 the combination @w{GNU ddrescue + lziprecover} is the recommended option for
-recovering data from damaged files. @xref{ddrescue-example},
-@ref{ddrescue-example2}, and @ref{ddrescue-example3}, for examples.
+recovering data from damaged files. @xref{ddrescue example1},
+@ref{ddrescue example2}, @ref{ddrescue example3}, and @ref{ddrescue example4},
+for examples.
 @ifnothtml
 @xref{Top,GNU ddrescue manual,,ddrescue},
 @end ifnothtml
@@ -168,7 +172,9 @@ argument means standard input. It can be mixed with other @var{files} and is
 read just once, the first time it appears in the command line. If no file
 names are specified, lziprecover decompresses from standard input to
 standard output. Remember to prepend @file{./} to any file name beginning
-with a hyphen, or use @samp{--}.
+with a hyphen, or use @samp{--}. It is the responsibility of the caller to
+check that the file names in the command line are valid. (For example, that
+they do not contain unprintable characters).
 
 @noindent
 lziprecover supports the following options: @xref{Argument syntax}.
@@ -188,7 +194,7 @@ This version number should be included in all bug reports.
 @itemx --trailing-error
 Exit with error status 2 if any remaining input is detected after
 decompressing the last member. Such remaining input is usually trailing
-garbage that can be safely ignored. @xref{concat-example}.
+garbage that can be safely ignored. @xref{concat example}.
 
 @item -A
 @itemx --alone-to-lz
@@ -250,11 +256,11 @@ Decompress only a range of bytes starting at decompressed byte position
 at 0. The bytes produced are sent to standard output unless the option
 @option{-o} is used. This option provides random access to the data in
 multimember files; it only decompresses the members containing the desired
-data. In order to guarantee the correctness of the data produced, all
-members containing any part of the desired data are decompressed and their
-integrity is checked.
+data. In order to confirm the correctness of the data produced, all members
+containing any part of the desired data are decompressed and their integrity
+is checked.
 
-@anchor{range-format}
+@anchor{range format}
 Four formats of @var{range} are recognized, @samp{@var{begin}},
 @samp{@var{begin}-@var{end}}, @samp{@var{begin},@var{size}}, and
 @samp{,@var{size}}. If only @var{begin} is specified, @var{end} is taken as
@@ -361,12 +367,13 @@ lzma-alone.
 @item -l
 @itemx --list
 Print the uncompressed size, compressed size, and percentage saved of the
-files specified. Trailing data are ignored. The values produced are correct
-even for multimember files. If more than one file is given, a final line
-containing the cumulative sizes is printed. With @option{-v}, the dictionary
-size, the number of members in the file, and the amount of trailing data (if
-any) are also printed. With @option{-vv}, the positions and sizes of each
-member in multimember files are also printed. A multimember file with one or
+files specified. Trailing data are not counted. The values produced are
+correct even for multimember files. If more than one file is given, a final
+line containing the cumulative sizes is printed. With @option{-v}, the
+dictionary size, the number of members in the file, and @samp{+t} to
+indicate the presence of trailing data are also printed. With @option{-vv},
+the positions and sizes of each member in multimember files, and the amount
+of trailing data (if any) are also printed. A multimember file with one or
 more empty members is accepted if redirected to standard input or if '-i' is
 given. With @option{-i}, format errors are ignored, and with @option{-ivv},
 gaps between members are shown. The member numbers start at 1 and coincide
@@ -392,7 +399,10 @@ Set the maximum number of worker threads for @option{--fec=create},
 overriding the system's default. Valid values range from 1 to as many as
 your system can support. If this option is not used, lziprecover tries to
 detect the number of processors in the system and use it as default value.
-@w{@samp{lziprecover --help}} shows the system's default value.
+@w{@samp{lziprecover --help}} shows the system's default value. If the size
+of the protected file is larger than half the system's RAM, this option is
+ignored and all the packets of the fec file are created concurrently to
+avoid reading the protected file more than once.
 
 @item -o @var{file}[/]
 @itemx --output=@var{file}[/]
@@ -402,7 +412,7 @@ the form @file{rec1@var{file}}, @file{rec2@var{file}}, etc.
 
 If creating FEC data and @option{-c} has not been also specified, write the
 FEC data to @var{file}. If @var{file} ends with a slash, it is interpreted
-as the name of a directory where the fec file(s) will be written to. In this
+as the name of a directory where the fec file(s) are to be written. In this
 case, the fec file names are composed by replacing the prefix preceding the
 last slash of each file name specified in the command line with @var{file}
 (or prepending @var{file} if the file name does not contain a slash), and
@@ -420,18 +430,18 @@ Quiet operation. Suppress all messages.
 
 @item -r
 @itemx --recursive
-When creating or reading fec files (but not when listing), for each directory
-operand, read and process all files in that directory, recursively. Follow
-symbolic links given in the command line, but skip symbolic links that are
-encountered recursively. Ignore files and directories named @file{fec} or
-@file{*[-._]fec}.
+When creating or reading fec files (but not when listing them), for each
+directory operand, read and process all files in that directory,
+recursively. Follow symbolic links given in the command line, but skip
+symbolic links that are encountered recursively. Ignore files and
+directories named @file{fec} or @file{*[-._]fec}.
 
 @item -R
 @itemx --dereference-recursive
-When creating or reading fec files (but not when listing), for each directory
-operand, read and process all files in that directory, recursively,
-following all symbolic links. Ignore files and directories named @file{fec}
-or @file{*[-._]fec}.
+When creating or reading fec files (but not when listing them), for each
+directory operand, read and process all files in that directory,
+recursively, following all symbolic links. Ignore files and directories
+named @file{fec} or @file{*[-._]fec}.
 
 @item -s
 @itemx --split
@@ -473,6 +483,16 @@ both in hexadecimal and as a string of printable ASCII characters.@*
 Two or more @option{-v} options show the progress of decompression.@*
 In other modes, increasing verbosity levels show final status, progress of
 operations, and extra information (for example, the failed areas).
+
+@anchor{--append}
+@item --append=@var{file}
+Append the contents of @var{file} as trailing data to each of the @var{files}
+specified. If @var{file} is a hyphen, the data to be appended are read from
+standard input. If the contents of @var{file} are not safe as trailing data,
+@option{--append} wraps them in a "TDATABOX", making them safe to append to
+lzip files as long as lzip tools from 2026 or newer are used to decode the
+index of such files or dump the trailing data. Use @option{--force} to
+replace any existing trailing data in the destination file.
 
 @item --dump=[@var{member_list}][:damaged][:empty][:tdata]
 Dump the members listed, the damaged members (if any), the empty members (if
@@ -568,7 +588,7 @@ lziprecover also supports the following debug options (for experts):
 @itemx --debug-reproduce=@var{range}[,@var{sector_size}]
 Load the compressed @var{file} into memory, set all bytes in the positions
 specified by @var{range} to 0, and try to reproduce a correct compressed
-file. @xref{--reproduce}. @xref{range-format}, for a description of
+file. @xref{--reproduce}. @xref{range format}, for a description of
 @var{range}. If a @var{sector_size} is specified, set each sector to 0 in
 sequence and try to reproduce the file, printing to standard output final
 statistics of the number of sectors reproduced successfully. Exit with
@@ -576,20 +596,20 @@ nonzero status only in case of fatal error.
 
 @item -F dc@var{n}
 @itemx --fec=dc@var{n}
-Simulate FEC repair of all combinations of @var{n} zeroed block errors
-spread along the whole input file.
+Simulate FEC repair of all combinations of @var{n} block errors (totalling
+the number of FEC bytes or less) spread along the whole protected file.
 
 @item -F dz@var{range}[:@var{range}]...
 @itemx --fec=dz@var{range}[:@var{range}]...
-Simulate FEC repair of one or more zeroed block(s) in the input file at the
-@var{range}s given. The @var{range}s may be unordered and overlapping.
-Lziprecover sorts and joins them as needed. @xref{range-format}, for a
+Simulate FEC repair of one or more damaged block(s) in the protected file at
+the @var{range}s given. The @var{range}s may be unordered and overlapping.
+Lziprecover sorts and joins them as needed. @xref{range format}, for a
 description of @var{range}.
 
 @item -F dZ@var{size}[,@var{delta}]
 @itemx --fec=dZ@var{size}[,@var{delta}]
-Simulate FEC repair of all possible zeroed blocks of size @var{size} in the
-input file. @var{delta} defaults to @var{size}. Values of @var{delta}
+Simulate FEC repair of all possible damaged blocks of size @var{size} in the
+protected file. @var{delta} defaults to @var{size}. Values of @var{delta}
 smaller than @var{size} result in overlapping blocks.
 
 @item -M
@@ -660,7 +680,7 @@ positions specified by @var{range}, so as to test all possible one-byte
 errors. For each decompression error find the error detection delay and
 print to standard output the maximum delay. The error detection delay is the
 difference between the position of the error and the position where the
-decoder realized that the data contains an error. @xref{range-format}, for a
+decoder realized that the data contains an error. @xref{range format}, for a
 description of @var{range}.
 
 @item -Z @var{position},@var{value}
@@ -677,7 +697,9 @@ blocks fits in GF(2^8).
 
 Numbers given as arguments to options may be expressed in decimal,
 hexadecimal, or octal (using the same syntax as integer constants in C++),
-and may be followed by a multiplier and an optional @samp{B} for "byte".
+may contain underscore separators between groups of 3 or more digits (2 or
+more digits for hexadecimal), and may be followed by a multiplier and an
+optional @samp{B} for "byte". (1_234_567kB, 4KiB, 0x1234_5678, 07_777_777).
 
 Table of SI and binary prefixes (unit multipliers):
 
@@ -837,8 +859,9 @@ Size of the original uncompressed data.
 Total size of the member, including header and trailer. This field acts
 as a distributed index, improves the checking of stream integrity, and
 facilitates the safe recovery of undamaged members from multimember files.
-Lzip limits the member size to @w{2 PiB} to prevent the data size field from
-overflowing.
+The index is built by traversing the members backwards from the end of the
+file. Lzip limits the member size to @w{2 PiB} to prevent the data size
+field from overflowing.
 @end table
 
 
@@ -955,8 +978,8 @@ with @w{@samp{lziprecover --reproduce}} as long as the missing bytes can be
 recovered from the older backup, even if other messages in the common part
 have been changed or deleted. Mailboxes seem to be especially easy to
 reproduce. The probability of reproducing a mailbox
-(@pxref{performance-of-reproduce}) is almost as high as that of merging two
-identical backups (@pxref{performance-of-merge}).
+(@pxref{performance of reproduce}) is almost as high as that of merging two
+identical backups (@pxref{performance of merge}).
 
 
 @node Fec files
@@ -967,7 +990,8 @@ Forward Error Correction (FEC) is any way of protecting data from corruption
 by creating redundant data that can be used later to repair errors in the
 protected data. Lziprecover uses a Hilbert-based Reed-Solomon code to create
 one fec file (with extension @file{.fec}) for each file that needs to be
-protected. The fec files created by lziprecover are reproducible.
+protected. The fec files created by lziprecover are reproducible. A fec file
+can be used as recovery record for a tar.lz archive. @xref{recovery record}.
 
 Reed-Solomon is the most space-efficient Error Correcting Code (ECC) for
 data stored in block devices. It creates redundant FEC blocks in such a way
@@ -1005,7 +1029,7 @@ provide @samp{prodata_size}, @samp{prodata_md5}, and @samp{gf16}.
 @section How Reed-Solomon works
 @cindex Reed-Solomon tutorial
 
-To illustrate how Reed-Solomon works on the BEC, we will use an example with
+To illustrate how Reed-Solomon works on the BEC we use an example with
 standard arithmetic on integers. Note that in lziprecover's FEC each
 variable is a (potentialy large) block of data, not a single value.
 
@@ -1080,26 +1104,27 @@ y = -3 + 5            (2e)
 
 Lziprecover's implementation of Reed-Solomon can manage up to 128 data
 blocks + 128 FEC blocks when using a Galois Field of size 256 (GF(2^8)), or
-up to 32768 data blocks + 32768 FEC blocks when using a Galois Field of size
-65536 (GF(2^16)). GF(2^8) is included because it is faster for files up to
-about @w{1 MB}. The number of FEC blocks is currently limited to 2048
-because of memory and time limits. Inverting a matrix for 32768 FEC blocks
+up to 32_768 data blocks + 32_768 FEC blocks when using a Galois Field of
+size 65_536 (GF(2^16)). GF(2^8) is included because it is faster for files
+up to about @w{1 MB}. The number of FEC blocks is currently limited to 2048
+because of memory and time limits. Inverting a matrix for 32_768 FEC blocks
 would take a week and require @w{2 GiB} of RAM.
 
-The file is repaired in memory. Therefore, enough virtual memory
-@w{(RAM + swap)} to contain the protected file and the FEC data is required.
-The file size is limited to less than @w{2 GiB} on 32-bit systems. The
-repaired file is checked with a MD5 digest.
+Lziprecover can protect and repair efficiently files larger than RAM, only
+limited by address space and by the size of the FEC data, which must fit in
+virtual memory @w{(RAM + swap)}. The size of the protected file is limited
+to less than @w{2 GiB} on 32-bit systems. The repaired file is checked with
+a MD5 digest.
 
-Lziprecover divides the input file in 1 to 32768 data blocks of the same
-size, which ranges from 512 bytes to @w{128 TiB}, for a total protected file
-size of up to @w{4 EiB}. It then uses a Hilbert matrix @samp{A} to create up
-to 2048 FEC blocks of the same size as the data blocks. Lziprecover corrects
-errors in the data blocks by first reducing the equation system to M
-equations with M unknowns each, where M is the number of missing data
-blocks. Then it multiplies the inverse of the relevant submatrix of @samp{A}
-by the vector of results of the M equations to recompute the values of the
-missing data blocks.
+Lziprecover divides the protected file in 1 to 32_768 data blocks of the
+same size, which ranges from 512 bytes to @w{128 TiB}, for a total protected
+file size of up to @w{4 EiB}. It then uses a Hilbert matrix @samp{A} to
+create up to 2048 FEC blocks of the same size as the data blocks.
+Lziprecover corrects errors in the data blocks by first reducing the
+equation system to M equations with M unknowns each, where M is the number
+of missing data blocks. Then it multiplies the inverse of the relevant
+submatrix of @samp{A} by the vector of results of the M equations to
+recompute the values of the missing data blocks.
 
 Lziprecover implements GF(2^8) with polynomial 0x11D and GF(2^16) with
 polynomial 0x1100B.
@@ -1148,6 +1173,15 @@ Example 4: Create fec files for a collection of photos stored in directory
 lziprecover -v -Fc -o photos-fec/ photos/*
 @end example
 
+@anchor{recovery record}
+@noindent
+Example 5: Append a fec file to the file @file{archive.tar.lz} to be used
+later as a recovery record during repair. @xref{Trailing data}.
+
+@example
+lziprecover -Fc -c archive.tar.lz | lziprecover --append=- archive.tar.lz
+@end example
+
 
 @node Testing with fec files
 @section How to test files using fec files
@@ -1186,6 +1220,15 @@ Example 4: Test the integrity of a collection of photos stored in directory
 lziprecover -v -Ft --fec-file=photos-fec/ photos/*
 @end example
 
+@noindent
+Example 5: Test the integrity of the file @file{archive.tar.lz} using the
+recovery record appended to the file itself. @xref{Trailing data}.
+
+@example
+lziprecover --dump=tdata archive.tar.lz | \
+  lziprecover -v -Ft --fec-file=- archive.tar.lz
+@end example
+
 
 @node Repairing with fec files
 @section How to repair files using fec files
@@ -1217,7 +1260,7 @@ directory @file{fec}.
 lziprecover -v -r -Fr --fec-file=fec/ datadir
 @end example
 
-@anchor{ddrescue-example}
+@anchor{ddrescue example1}
 @noindent
 Example 4: Recover a collection of photos from a damaged external drive
 (@file{/dev/sdc1}). The photos are in directory @file{photos}, and the fec
@@ -1231,6 +1274,23 @@ cp -a /mnt/hdimage/photos-fec photos-fec
 umount /mnt/hdimage
 lziprecover -v -Fr --fec-file=photos-fec/ photos/*
   (Check and rename repaired files. They are named @file{photos/*_fixed})
+@end example
+
+@anchor{ddrescue example2}
+@noindent
+Example 5: Recover a damaged tar.lz backup using the recovery record
+appended to the backup itself. @xref{Trailing data}. The damaged backup
+comes from a damaged partition copied with ddrescue.
+
+@example
+ddrescue -b4096 -r10 /dev/sdc1 hdimage mapfile
+mount -o loop,ro hdimage /mnt/hdimage
+cp /mnt/hdimage/backup.tar.lz backup.tar.lz
+umount /mnt/hdimage
+lzip -t backup.tar.lz
+  backup.tar.lz: Decoder error at pos 1_020_530
+lziprecover --dump=tdata backup.tar.lz | \
+  lziprecover -v -Fr --fec-file=- backup.tar.lz
 @end example
 
 
@@ -1363,7 +1423,7 @@ A four byte string identifying the fec packet, with the value "\xB3FEC"
 (0xB3, 0x46, 0x45, 0x43).
 
 @item fbn (fec_block_number)
-Number of this FEC block (0 to 32767). Required to compute the decode matrix.
+Number of this FEC block (0 to 32_767). Required to compute the decode matrix.
 
 @item fbs (coded fec_block_size)
 Number of FEC bytes per block. It is a multiple of 512 bytes between 512
@@ -1447,7 +1507,7 @@ copies:
 ddrescue -s<correct_size> -x<correct_size> file.lz correct_size_file.lz
 @end example
 
-@anchor{performance-of-merge}
+@anchor{performance of merge}
 To give you an idea of its possibilities, when merging two copies, each of
 them with one damaged area affecting 1 percent of the copy, the probability
 of obtaining a correct file is about 98 percent. With three such copies the
@@ -1466,11 +1526,11 @@ Here is a real case of successful merging. Two copies of the file
 @file{icecat-3.5.3-x86.tar.lz} (compressed size @w{9 MB}) became corrupt
 while stored on the same NAND flash device. One of the copies had 76
 single-bit errors scattered in an area of 1020 bytes, and the other had
-3028 such errors in an area of 31729 bytes. Lziprecover produced a
+3028 such errors in an area of 31_729 bytes. Lziprecover produced a
 correct file, identical to the original, in just 5 seconds:
 
 @example
-lziprecover -vvm a/icecat-3.5.3-x86.tar.lz b/icecat-3.5.3-x86.tar.lz
+lziprecover -vv -m a/icecat-3.5.3-x86.tar.lz b/icecat-3.5.3-x86.tar.lz
 Merging member 1 of 1  (2552 errors)
   2552 errors have been grouped in 16 clusters.
   Trying variation 2 of 2, block 2
@@ -1481,7 +1541,7 @@ Note that the number of errors reported by lziprecover (2552) is lower
 than the number of corrupt bytes (3104) because contiguous corrupt bytes
 are counted as a single multibyte error.
 
-@anchor{ddrescue-example2}
+@anchor{ddrescue example3}
 @noindent
 Example 1: Recover a compressed backup from two copies on CD-ROM with
 error-checked merging of copies.
@@ -1496,7 +1556,7 @@ ddrescue -d -r1 -b2048 /dev/cdrom cdimage2 mapfile2
 mount -t iso9660 -o loop,ro cdimage2 /mnt/cdimage
 cp /mnt/cdimage/backup.tar.lz rescued2.tar.lz
 umount /mnt/cdimage
-lziprecover -m -v -o backup.tar.lz rescued1.tar.lz rescued2.tar.lz
+lziprecover -v -m -o backup.tar.lz rescued1.tar.lz rescued2.tar.lz
   Input files merged successfully.
 lziprecover -tv backup.tar.lz
   backup.tar.lz: ok
@@ -1511,7 +1571,7 @@ member 12 damaged in both copies. The correct file produced is saved in
 @file{big_db_00001.lz}.
 
 @example
-lziprecover -m -v -o big_db_00001.lz big_db1_00001.lz big_db2_00001.lz
+lziprecover -v -m -o big_db_00001.lz big_db1_00001.lz big_db2_00001.lz
   Input files merged successfully.
 lziprecover -tv big_db_00001.lz
   big_db_00001.lz: ok
@@ -1559,10 +1619,10 @@ which should produce an output like the following:
 @example
 Reproducing:    foo.lz
 Reference file: foo
-Testing sectors of size 512 at file positions 65536 to 66047
-  (master mpos = 65536, dpos = 296892)
-foo: Match found at offset 296892
-Reproduction succeeded at pos 65536
+Testing sectors of size 512 at file positions 65_536 to 66_047
+  (master mpos = 65_536, dpos = 296_892)
+foo: Match found at offset 296_892
+Reproduction succeeded at pos 65_536
 
         1 sectors tested
         1 reproductions returned with zero status
@@ -1580,7 +1640,7 @@ versions of the same file.
 
 The offset reported by lziprecover is the position in the reference file of
 the first byte that could not be decompressed. This is the first byte that
-will be compressed to reproduce the zeroed sector.
+needs to be compressed to reproduce the zeroed sector.
 
 The reproduce mode tries to reproduce the missing compressed data originally
 present in the zeroed sector. It is based on the perfect reproducibility of
@@ -1600,7 +1660,7 @@ header, and that the archive can be reproduced. The tarlz format has minimum
 overhead. It uses basic ustar headers, and only adds extended pax headers
 when they are required.
 
-@anchor{performance-of-reproduce}
+@anchor{performance of reproduce}
 @section Performance of @option{--reproduce}
 
 Reproduce mode is especially useful when recovering a corrupt backup (or a
@@ -1642,27 +1702,27 @@ probability @w{1 - X}).
 
 @noindent
 Example 1: Recover a damaged source tarball with a zeroed sector of 512
-bytes at file position 1019904, using as reference another source tarball
+bytes at file position 1_019_904, using as reference another source tarball
 for a different version of the software.
 
 @example
 lziprecover -vv -e --reference-file=gmp-6.1.1.tar gmp-6.1.2.tar.lz
 Reproducing bad area in member 1 of 1
-  (begin = 1019904, size = 512, value = 0x00)
-  (master mpos = 1019904, dpos = 6292134)
-warning: gmp-6.1.1.tar: Partial match found at offset 6277798, len 8716.
+  (begin = 1_019_904, size = 512, value = 0x00)
+  (master mpos = 1_019_904, dpos = 6_292_134)
+warning: gmp-6.1.1.tar: Partial match found at offset 6_277_798, len 8716.
 Reference data may be mixed with other data.
 Trying level -9
-  Reproducing position 1015808
+  Reproducing position 1_015_808
 Member reproduced successfully.
 Copy of input file reproduced successfully.
 @end example
 
-@anchor{ddrescue-example3}
+@anchor{ddrescue example4}
 @noindent
-Example 2: Recover a damaged backup with a zeroed sector of 4096 bytes at
-file position 1019904, using as reference a previous backup. The damaged
-backup comes from a damaged partition copied with ddrescue.
+Example 2: Recover a damaged tar.lz backup with a zeroed sector of 4096
+bytes at file position 1_019_904, using as reference a previous backup. The
+damaged backup comes from a damaged partition copied with ddrescue.
 
 @example
 ddrescue -b4096 -r10 /dev/sdc1 hdimage mapfile
@@ -1670,22 +1730,22 @@ mount -o loop,ro hdimage /mnt/hdimage
 cp /mnt/hdimage/backup.tar.lz backup.tar.lz
 umount /mnt/hdimage
 lzip -t backup.tar.lz
-  backup.tar.lz: Decoder error at pos 1020530
+  backup.tar.lz: Decoder error at pos 1_020_530
 lziprecover -vv -e --reference-file=old_backup.tar backup.tar.lz
 Reproducing bad area in member 1 of 1
-  (begin = 1019904, size = 4096, value = 0x00)
-  (master mpos = 1019903, dpos = 5857954)
-warning: old_backup.tar: Partial match found at offset 5743778, len 9546.
+  (begin = 1_019_904, size = 4096, value = 0x00)
+  (master mpos = 1_019_903, dpos = 5_857_954)
+warning: old_backup.tar: Partial match found at offset 5_743_778, len 9546
 Reference data may be mixed with other data.
 Trying level -9
-  Reproducing position 1015808
+  Reproducing position 1_015_808
 Member reproduced successfully.
 Copy of input file reproduced successfully.
 @end example
 
 @noindent
 Example 3: Recover a damaged backup with a zeroed sector of 4096 bytes at
-file position 1019904, using as reference a file from the filesystem. (If
+file position 1_019_904, using as reference a file from the filesystem. (If
 the zeroed sector encodes (part of) a tar header, the tarball can't be
 reproduced).
 
@@ -1699,11 +1759,11 @@ tarlz: backup.tar.lz: Archive ends unexpectedly.
 # Find in the filesystem the last file listed and use it as reference.
 lziprecover -vv -e --reference-file=/somedir/example.txt backup.tar.lz
 Reproducing bad area in member 1 of 1
-  (begin = 1019904, size = 4096, value = 0x00)
-  (master mpos = 1019903, dpos = 5857954)
+  (begin = 1_019_904, size = 4096, value = 0x00)
+  (master mpos = 1_019_903, dpos = 5_857_954)
 /somedir/example.txt: Match found at offset 9378
 Trying level -9
-  Reproducing position 1015808
+  Reproducing position 1_015_808
 Member reproduced successfully.
 Copy of input file reproduced successfully.
 @end example
@@ -1724,7 +1784,7 @@ complete copy in the filesystem or in another backup, even if
 @cindex tarlz
 
 @uref{http://www.nongnu.org/lzip/manual/tarlz_manual.html,,Tarlz} is a
-massively parallel (multi-threaded) combined implementation of the tar
+massively parallel (multithreaded) combined implementation of the tar
 archiver and the
 @uref{http://www.nongnu.org/lzip/manual/lzip_manual.html,,lzip} compressor.
 
@@ -1754,7 +1814,7 @@ the command below prints something like
 @file{archive.tar.lz} now contains the recovered archive:
 
 @example
-lziprecover -m -v -o archive.tar.lz a/archive.tar.lz b/archive.tar.lz
+lziprecover -v -m -o archive.tar.lz a/archive.tar.lz b/archive.tar.lz
 @end example
 
 If you only have one copy of the damaged archive with a zeroed block of data
@@ -1779,9 +1839,9 @@ lziprecover -v --byte-repair archive.tar.lz
 
 If all the above fails, and the archive was created with tarlz, you may save
 the damaged members for later and then copy the good members to another
-archive. If the two commands below succeed, @file{bad_members.tar.lz} will
-contain all the damaged members and @file{archive_cleaned.tar.lz} will
-contain a good archive with the damaged members removed:
+archive. If the two commands below succeed, then @file{bad_members.tar.lz}
+contains all the damaged members and @file{archive_cleaned.tar.lz} contains
+a good archive with the damaged members removed:
 
 @example
 lziprecover -v --dump=damaged -o bad_members.tar.lz archive.tar.lz
@@ -1802,10 +1862,10 @@ tarlz --keep-damaged -xvf ../bad_members.tar.lz
 Lziprecover is able to copy a list of members from a file to another.
 For example the command
 @w{@samp{lziprecover --dump=1-10:r1:tdata archive.tar.lz > subarch.tar.lz}}
-creates a subset archive containing the first ten members, the end-of-file
-blocks, and the trailing data (if any) of @file{archive.tar.lz}. The
-@samp{r1} part selects the last member, which in an appendable tar.lz
-archive contains the end-of-file blocks.
+creates a subset archive containing the first ten members, the
+end-of-archive blocks, and the trailing data (if any) of
+@file{archive.tar.lz}. The @samp{r1} part selects the last member, which in
+an appendable tar.lz archive contains the end-of-archive blocks.
 
 
 @node File names
@@ -1821,7 +1881,8 @@ extensions @file{.tar.lz}, @file{.lz}, or @file{.tlz}, the string
 The name of the fixed file produced by @option{--fec=repair} is made by
 appending the string @file{_fixed} to the original file name. If the
 original file name ends with one of the extensions @file{.tar.lz}, @file{.lz},
-or @file{.tlz}, the string @file{_fixed} is inserted before the extension.
+@file{.tlz}, or @file{.tar}, the string @file{_fixed} is inserted before the
+extension.
 
 
 @node Trailing data
@@ -1838,13 +1899,15 @@ example when writing to a tape. It is safe to append any amount of
 padding zero bytes to a lzip file.
 
 @item
-Useful data added by the user; an 'End Of File' string (to check that the
-file has not been truncated), a cryptographically secure hash, a description
-of file contents, etc. It is safe to append any amount of text to a lzip
-file as long as none of the first four bytes of the text matches the
-corresponding byte in the string "LZIP", and the text does not contain any
-zero bytes (null characters). Nonzero bytes and zero bytes can't be safely
-mixed in trailing data.
+Useful data added by the user: a recovery record (@pxref{Fec files}),
+an 'End Of File' string (to check that the file has not been truncated), a
+cryptographically secure hash, a description of file contents, etc. It is
+safe to append any amount of text to a lzip file as long as none of the
+first four bytes of the text matches the corresponding byte in the string
+"LZIP", and the text does not contain any zero bytes (null characters).
+Nonzero bytes and zero bytes can't be safely mixed in trailing data unless
+the trailing data are appended using the option @option{--append}.
+@xref{--append}.
 
 @item
 Garbage added by some not totally successful copy operation.
@@ -1932,7 +1995,7 @@ show status.
 lziprecover -tv file.lz
 @end example
 
-@anchor{concat-example}
+@anchor{concat example}
 @noindent
 Example 4: The right way of concatenating the decompressed output of two or
 more compressed files. @xref{Trailing data}.
@@ -1958,7 +2021,8 @@ lziprecover -D 0,10KiB file.lz
 
 @noindent
 Example 6: Decompress @file{file.lz} partially from decompressed byte at
-offset 10000 to decompressed byte at offset 14999 (5000 bytes are produced).
+offset 10_000 to decompressed byte at offset 14_999 (5000 bytes are
+produced).
 
 @example
 lziprecover -D 10000-15000 file.lz
@@ -2096,6 +2160,7 @@ Test one byte, block, or truncation size every @var{n} bytes. If
 non-overlapping blocks, or truncation sizes. Values of @var{n} smaller than
 the block size result in overlapping blocks. (Which is convenient for
 testing because there are usually too few non-overlapping blocks in a file).
+@var{n} accepts a @samp{s} multiplier for 'block size'.
 
 @anchor{--set-byte}
 @item -e @var{position},@var{value}
@@ -2115,8 +2180,9 @@ when testing many (or large) known good files.
 
 @item -p @var{bytes}
 @itemx --position=@var{bytes}
-First byte position to test in the file. Defaults to 0. Negative values
-are relative to the end of the file.
+First byte position to test in the file. Defaults to 0. Negative values are
+relative to the end of the file. @var{bytes} accepts a @samp{s} multiplier
+for 'block size'.
 
 @item -q
 @itemx --quiet
@@ -2126,7 +2192,8 @@ Quiet operation. Suppress all messages.
 @itemx --size=@var{bytes}
 Number of byte positions to test. If not specified, the rest of the file
 is tested (from @option{--position} to end of file). Negative values are
-relative to the rest of the file.
+relative to the rest of the file. @var{bytes} accepts a @samp{s} multiplier
+for 'block size'.
 
 @item -t
 @itemx --truncate

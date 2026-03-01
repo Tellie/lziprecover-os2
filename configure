@@ -1,12 +1,12 @@
 #! /bin/sh
-# configure script for Lziprecover - Data recovery tool for the lzip format
-# Copyright (C) 2009-2025 Antonio Diaz Diaz.
+# configure script for Lziprecover - Data recovery tool
+# Copyright (C) 2009-2026 Antonio Diaz Diaz.
 #
 # This configure script is free software: you have unlimited permission
 # to copy, distribute, and modify it.
 
 pkgname=lziprecover
-pkgversion=1.25
+pkgversion=1.26
 progname=lziprecover
 srctrigger=doc/${pkgname}.texi
 
@@ -103,11 +103,9 @@ while [ $# != 0 ] ; do
 	LIBS=*)          LIBS="${optarg} ${LIBS}" ;;
 	MAKEINFO=*)  MAKEINFO=${optarg} ;;
 
-	--*)
-		echo "configure: WARNING: unrecognized option: '${option}'" 1>&2 ;;
+	--*) echo "configure: WARNING: unrecognized option: '${option}'" 1>&2 ;;
 	*=* | *-*-*) ;;
-	*)
-		echo "configure: unrecognized option: '${option}'" 1>&2
+	*)	echo "configure: unrecognized option: '${option}'" 1>&2
 		echo "Try 'configure --help' for more information." 1>&2
 		exit 1 ;;
 	esac
@@ -174,8 +172,8 @@ echo "LIBS = ${LIBS}"
 echo "MAKEINFO = ${MAKEINFO}"
 rm -f Makefile
 cat > Makefile << EOF
-# Makefile for Lziprecover - Data recovery tool for the lzip format
-# Copyright (C) 2009-2025 Antonio Diaz Diaz.
+# Makefile for Lziprecover - Data recovery tool
+# Copyright (C) 2009-2026 Antonio Diaz Diaz.
 # This file was generated automatically by configure. Don't edit.
 #
 # This Makefile is free software: you have unlimited permission

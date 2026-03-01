@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -64,7 +64,7 @@ bool compare_member( const uint8_t * const mbuffer, const long msize,
     if( digest != new_digest ) error = true;
     }
   if( error && verbosity >= 0 )
-    std::printf( "byte %llu comparison failed\n", byte_pos );
+    std::printf( "byte %s comparison failed\n", format_num3( byte_pos ) );
   return !error;
   }
 
@@ -98,6 +98,9 @@ long next_pct_pos( const Lzip_index & lzip_index, const long i, const int pct,
   return pct_pos;
   }
 
+void print_byte_pos( unsigned long long byte_pos )
+  { std::printf( "byte %s\n", format_num3( byte_pos ) ); }
+
 } // end namespace
 
 
@@ -118,7 +121,8 @@ int lunzcrash_bit( const std::string & input_filename,
   if( verbosity >= 2 ) printf( "Testing file '%s'\n", filename );
 
   const long long cdata_size = lzip_index.cdata_size();
-  long positions = 0, decompressions = 0, successes = 0, failed_comparisons = 0;
+  unsigned long positions = 0, decompressions = 0, successes = 0,
+                failed_comparisons = 0;
   int pct = (cdata_size >= 1000 && isatty( STDERR_FILENO )) ? 0 : 100;
   for( long i = 0; i < lzip_index.members(); ++i )
     {
@@ -134,7 +138,8 @@ int lunzcrash_bit( const std::string & input_filename,
     long pos = Lzip_header::size + 1, printed = 0;	// last pos printed
     const long end = msize - 20;
     if( verbosity == 0 )	// give a clue of the range being tested
-      std::printf( "Testing bytes %llu to %llu\n", mpos + pos, mpos + end - 1 );
+      std::printf( "Testing bytes %s to %s\n",
+                   format_num3( mpos + pos ), format_num3( mpos + end - 1 ) );
     LZ_mtester master( mbuffer, msize, dictionary_size );
     uint8_t * const buffer2 = new uint8_t[dictionary_size];
     for( ; pos < end; ++pos )
@@ -145,8 +150,7 @@ int lunzcrash_bit( const std::string & input_filename,
       if( verbosity >= 0 && pos >= pct_pos )
         { std::fprintf( stderr, "\r%3u%% done\r", pct ); ++pct;
           pct_pos = next_pct_pos( lzip_index, i, pct ); }
-      if( verbosity >= 1 )
-        { std::printf( "byte %llu\n", mpos + pos ); printed = pos; }
+      if( verbosity >= 1 ) { printed = pos; print_byte_pos( mpos + pos ); }
       ++positions;
       const uint8_t byte = mbuffer[pos];
       for( uint8_t mask = 1; mask != 0; mask <<= 1 )
@@ -161,13 +165,12 @@ int lunzcrash_bit( const std::string & input_filename,
           ++successes;
           if( verbosity >= 0 )
             {
-            if( printed < pos )
-              { std::printf( "byte %llu\n", mpos + pos ); printed = pos; }
+            if( printed < pos ) { printed = pos; print_byte_pos( mpos + pos ); }
             std::printf( "0x%02X (0x%02X^0x%02X) passed the test%s",
                          mbuffer[pos], byte, mask, ( result < 0 ) ? "" : "\n" );
             if( result < 0 )
-              std::printf( ", but only consumed %lu bytes of %llu\n",
-                           failure_pos, msize );
+              std::printf( ", but only consumed %s bytes of %s\n",
+                           format_num3( failure_pos ), format_num3( msize ) );
             }
           if( !compare_member( mbuffer, msize, dictionary_size, mpos + pos,
                                md5_orig ) ) ++failed_comparisons;
@@ -178,20 +181,19 @@ int lunzcrash_bit( const std::string & input_filename,
               ( verbosity >= 1 && failure_pos - pos >= 10000 ) ||
               ( verbosity >= 0 && failure_pos - pos >= 50000 ) )
             {
-            if( printed < pos )
-              { std::printf( "byte %llu\n", mpos + pos ); printed = pos; }
-            std::printf( "Decoder error at pos %llu\n", mpos + failure_pos );
+            if( printed < pos ) { printed = pos; print_byte_pos( mpos + pos ); }
+            std::printf( "Decoder error at pos %s\n",
+                         format_num3( mpos + failure_pos ) );
             }
           }
         else if( result == 3 || result == 4 )	// test_member printed the error
           { if( verbosity >= 0 && printed < pos ) printed = pos; }
         else if( verbosity >= 0 )
           {
-          if( printed < pos )
-            { std::printf( "byte %llu\n", mpos + pos ); printed = pos; }
+          if( printed < pos ) { printed = pos; print_byte_pos( mpos + pos ); }
           if( result == 2 )
-            std::printf( "File ends unexpectedly at pos %llu\n",
-                         mpos + failure_pos );
+            std::printf( "File ends unexpectedly at pos %s\n",
+                         format_num3( mpos + failure_pos ) );
           else
             std::printf( "Unknown error code '%d'\n", result );
           }
@@ -240,7 +242,7 @@ int lunzcrash_block( const std::string & input_filename,
   if( verbosity >= 2 ) printf( "Testing file '%s'\n", filename );
 
   const long long cdata_size = lzip_index.cdata_size();
-  long decompressions = 0, successes = 0, failed_comparisons = 0;
+  unsigned long decompressions = 0, successes = 0, failed_comparisons = 0;
   int pct = (cdata_size >= 1000 && isatty( STDERR_FILENO )) ? 0 : 100;
   uint8_t * const block = new uint8_t[sector_size];
   for( long i = 0; i < lzip_index.members(); ++i )
@@ -259,8 +261,9 @@ int lunzcrash_block( const std::string & input_filename,
     long pos = Lzip_header::size + 1;
     const long end = msize - sector_size - 20;
     if( verbosity >= 0 )	// give a clue of the range being tested
-      std::printf( "Testing blocks of size %u from pos %llu to %llu\n",
-                   sector_size, mpos + pos, mpos + end - 1 );
+      std::printf( "Testing blocks of size %s from pos %s to %s\n",
+                   format_num3( sector_size ), format_num3( mpos + pos ),
+                   format_num3( mpos + end - 1 ) );
     LZ_mtester master( mbuffer, msize, dictionary_size );
     uint8_t * const buffer2 = new uint8_t[dictionary_size];
     for( ; pos < end; ++pos )
@@ -282,11 +285,12 @@ int lunzcrash_block( const std::string & input_filename,
         ++successes;
         if( verbosity >= 0 )
           {
-          std::printf( "block %llu,%u passed the test%s",
-                       mpos + pos, sector_size, ( result < 0 ) ? "" : "\n" );
+          std::printf( "block %s,%s passed the test%s",
+                       format_num3( mpos + pos ), format_num3( sector_size ),
+                       ( result < 0 ) ? "" : "\n" );
           if( result < 0 )
-            std::printf( ", but only consumed %lu bytes of %llu\n",
-                         failure_pos, msize );
+            std::printf( ", but only consumed %s bytes of %s\n",
+                         format_num3( failure_pos ), format_num3( msize ) );
           }
         if( !compare_member( mbuffer, msize, dictionary_size, mpos + pos,
                              md5_orig ) ) ++failed_comparisons;
@@ -297,17 +301,19 @@ int lunzcrash_block( const std::string & input_filename,
             ( verbosity >= 2 && failure_pos - pos >= sector_size ) ||
             ( verbosity >= 1 && failure_pos - pos >= 10000 ) ||
             ( verbosity >= 0 && failure_pos - pos >= 50000 ) )
-          std::printf( "block %llu,%u\nDecoder error at pos %llu\n",
-                       mpos + pos, sector_size, mpos + failure_pos );
+          std::printf( "block %s,%s\nDecoder error at pos %s\n",
+                       format_num3( mpos + pos ), format_num3( sector_size ),
+                       format_num3( mpos + failure_pos ) );
         }
       else if( result == 3 || result == 4 )	// test_member printed the error
         {}
       else if( verbosity >= 0 )
         {
-        std::printf( "block %llu,%u\n", mpos + pos, sector_size );
+        std::printf( "block %s,%s\n",
+                     format_num3( mpos + pos ), format_num3( sector_size ) );
         if( result == 2 )
-          std::printf( "File ends unexpectedly at pos %llu\n",
-                       mpos + failure_pos );
+          std::printf( "File ends unexpectedly at pos %s\n",
+                       format_num3( mpos + failure_pos ) );
         else
           std::printf( "Unknown error code '%d'\n", result );
         }
@@ -362,7 +368,7 @@ int md5sum_files( const std::vector< std::string > & filenames )
       {
       const int len = readblock( infd, buffer, buffer_size );
       if( len != buffer_size && errno )
-        { show_file_error( input_filename, read_error_msg, errno ); return 1; }
+        { show_file_error( input_filename, rd_err_msg, errno ); return 1; }
       if( len > 0 ) md5sum.md5_update( buffer, len );
       if( len < buffer_size ) break;
       }

@@ -1,6 +1,6 @@
 /* Functions to compute MD5 message digest of memory blocks according to the
    definition of MD5 in RFC 1321 from April 1992.
-   Copyright (C) 2020-2025 Antonio Diaz Diaz.
+   Copyright (C) 2020-2026 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided

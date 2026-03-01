@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2023-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2023-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by

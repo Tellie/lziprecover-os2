@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -59,9 +59,9 @@ bool decompress_member( const int infd, const Cl_options & cl_opts,
     if( verbosity >= 0 && result <= 2 )
       {
       pp();
-      std::fprintf( stderr, "%s at pos %llu\n", ( result == 2 ) ?
+      std::fprintf( stderr, "%s at pos %s\n", ( result == 2 ) ?
                     "File ends unexpectedly" : "Decoder error",
-                    mpos + rdec.member_position() );
+                    format_num3( mpos + rdec.member_position() ) );
       }
     return false;
     }
@@ -69,9 +69,10 @@ bool decompress_member( const int infd, const Cl_options & cl_opts,
     {
     if( verbosity >= 0 )
       { pp(); std::fprintf( stderr,
-              "%sMember at pos %llu contains only %llu bytes of %llu requested.\n",
-              ( verbosity >= 2 ) ? "\n" : "", mpos,
-              decoder.data_position() - outskip, outend - outskip ); }
+              "%sMember at pos %s contains only %s bytes of %s requested.\n",
+              ( verbosity >= 2 ) ? "\n" : "", format_num3( mpos ),
+              format_num3( decoder.data_position() - outskip ),
+              format_num3( outend - outskip ) ); }
     return false;
     }
   if( verbosity >= 2 ) std::fputs( "done\n", stderr );
@@ -79,37 +80,6 @@ bool decompress_member( const int infd, const Cl_options & cl_opts,
   }
 
 } // end namespace
-
-
-const char * format_num( unsigned long long num,
-                         unsigned long long limit,
-                         const int set_prefix )
-  {
-  enum { buffers = 8, bufsize = 32, n = 10 };
-  const char * const si_prefix[n] =
-    { "k", "M", "G", "T", "P", "E", "Z", "Y", "R", "Q" };
-  const char * const binary_prefix[n] =
-    { "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi", "Yi", "Ri", "Qi" };
-  static char buffer[buffers][bufsize];	// circle of static buffers for printf
-  static int current = 0;
-  static bool si = true;
-
-  if( set_prefix ) si = set_prefix > 0;
-  unsigned long long den = 1;
-  const unsigned factor = si ? 1000 : 1024;
-  char * const buf = buffer[current++]; current %= buffers;
-  const char * const * prefix = si ? si_prefix : binary_prefix;
-  const char * p = "";
-
-  for( int i = 0; i < n && num / den >= factor && den * factor > den; ++i )
-    { if( num / den <= limit && num % ( den * factor ) != 0 ) break;
-      den *= factor; p = prefix[i]; }
-  if( num % den == 0 )
-    snprintf( buf, bufsize, "%llu %s", num / den, p );
-  else
-    snprintf( buf, bufsize, "%3.2f %s", (double)num / den, p );
-  return buf;
-  }
 
 
 int range_decompress( const std::string & input_filename,
@@ -145,10 +115,10 @@ int range_decompress( const std::string & input_filename,
     }
 
   if( verbosity >= 1 )
-    std::fprintf( stderr, "Decompressing range %sB to %sB (%sB of %sBytes)\n",
-                  format_num( range.pos() ),
-                  format_num( range.pos() + range.size() ),
-                  format_num( range.size() ), format_num( udata_size ) );
+    std::fprintf( stderr, "Decompressing range %s to %s (%s of %s bytes)\n",
+                  format_num3( range.pos() ),
+                  format_num3( range.pos() + range.size() ),
+                  format_num3( range.size() ), format_num3( udata_size ) );
 
   Pretty_print pp( input_filename );
   bool error = false;
@@ -158,7 +128,7 @@ int range_decompress( const std::string & input_filename,
     if( range.overlaps( db ) )
       {
       if( verbosity >= 3 && lzip_index.members() > 1 )
-        std::fprintf( stderr, "Decompressing member %3ld\n", i + 1 );
+        std::fprintf( stderr, "Decompressing member %3s\n", format_num3( i + 1 ) );
       const long long outskip = std::max( 0LL, range.pos() - db.pos() );
       const long long outend = std::min( db.size(), range.end() - db.pos() );
       const long long mpos = lzip_index.mblock( i ).pos();

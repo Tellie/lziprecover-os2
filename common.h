@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -40,12 +40,13 @@ struct Bad_byte
 
 const char * const large_file_msg = "Input file is too large for this computer.";
 const char * const mem_msg = "Not enough memory.";
-const char * const read_error_msg = "Read error";
+const char * const rd_err_msg = "Read error";
 
 // defined in main_common.cc
 extern int verbosity;
 
-const char * format_num3( long long num );
+const char * format_num3( const unsigned long long pos,
+                          const unsigned long long neg = 0 );
 void show_error( const char * const msg, const int errcode = 0,
                  const bool help = false );
 void show_file_error( const char * const filename, const char * const msg,

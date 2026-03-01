@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -148,7 +148,8 @@ long repair_member( uint8_t * const mbuffer, const long long mpos,
       {
       if( verbosity >= 2 )
         {
-        std::printf( "  Trying position %llu %c", mpos + pos, terminator );
+        std::printf( "  Trying position %s %c",
+                     format_num3( mpos + pos ), terminator );
         std::fflush( stdout ); pending_newline = true;
         }
       for( int j = 0; j < 255; ++j )
@@ -196,7 +197,7 @@ uint8_t * read_member( const int infd, const long long mpos,
   uint8_t * const buffer = new uint8_t[msize];
 
   if( readblock( infd, buffer, msize ) != msize )
-    { show_file_error( filename.c_str(), read_error_msg, errno );
+    { show_file_error( filename.c_str(), rd_err_msg, errno );
       delete[] buffer; return 0; }
   return buffer;
   }
@@ -238,8 +239,9 @@ int byte_repair( const std::string & input_filename,
 
     if( verbosity >= 2 )		// damaged member found
       {
-      std::printf( "Repairing member %ld of %ld  (failure pos = %llu)\n",
-                   i + 1, lzip_index.members(), mpos + failure_pos );
+      std::printf( "Repairing member %s of %s  (failure pos = %s)\n",
+                   format_num3( i + 1 ), format_num3( lzip_index.members() ),
+                   format_num3( mpos + failure_pos ) );
       std::fflush( stdout );
       }
     uint8_t * const mbuffer = read_member( infd, mpos, msize, input_filename );
@@ -329,8 +331,9 @@ int debug_delay( const std::string & input_filename,
     const unsigned dictionary_size = lzip_index.dictionary_size( i );
     if( verbosity >= 2 )
       {
-      std::printf( "Finding max delay in member %ld of %ld  (mpos = %llu, msize = %llu)\n",
-                   i + 1, lzip_index.members(), mpos, msize );
+      std::printf( "Finding max delay in member %s of %s  (mpos = %s, msize = %s)\n",
+                   format_num3( i + 1 ), format_num3( lzip_index.members() ),
+                   format_num3( mpos ), format_num3( msize ) );
       std::fflush( stdout );
       }
     uint8_t * const mbuffer = read_member( infd, mpos, msize, input_filename );
@@ -351,7 +354,8 @@ int debug_delay( const std::string & input_filename,
         {
         if( verbosity >= 2 )
           {
-          std::printf( "  Delays at position %llu %c", mpos + pos, terminator );
+          std::printf( "  Delays at position %s %c",
+                       format_num3( mpos + pos ), terminator );
           std::fflush( stdout ); pending_newline = true;
           }
         int value = -1;
@@ -366,8 +370,8 @@ int debug_delay( const std::string & input_filename,
           }
         if( value >= 0 && verbosity >= 2 )
           {
-          std::printf( "  New max delay %lu at position %llu (0x%02X)\n",
-                       max_delay, mpos + pos, value );
+          std::printf( "  New max delay %s at position %s (0x%02X)\n",
+               format_num3( max_delay ), format_num3( mpos + pos ), value );
           std::fflush( stdout ); pending_newline = false;
           }
         if( pos + max_delay >= msize ) { pos = end; break; }
@@ -413,8 +417,9 @@ int debug_byte_repair( const std::string & input_filename,
   if( test_member_from_file( infd, msize, &failure_pos ) != 0 )
     {
     if( verbosity >= 0 )
-      std::fprintf( stderr, "Member %ld of %ld already damaged  (failure pos = %llu)\n",
-                    idx + 1, lzip_index.members(), mpos + failure_pos );
+      std::fprintf( stderr, "Member %s of %s already damaged  (failure pos = %s)\n",
+                    format_num3( idx + 1 ), format_num3( lzip_index.members() ),
+                    format_num3( mpos + failure_pos ) );
     return 2;
     }
   }
@@ -426,7 +431,7 @@ int debug_byte_repair( const std::string & input_filename,
   const uint8_t good_value = mbuffer[bad_pos];
   const uint8_t bad_value = bad_byte( good_value );
   mbuffer[bad_pos] = bad_value;
-  long failure_pos = 0;
+  long failure_pos = 5;
   if( bad_pos != 5 || isvalid_ds( header.dictionary_size() ) )
     {
     LZ_mtester mtester( mbuffer, msize, header.dictionary_size() );
@@ -441,11 +446,13 @@ int debug_byte_repair( const std::string & input_filename,
     }
   if( verbosity >= 2 )
     {
-    std::printf( "Test repairing member %ld of %ld  (mpos = %llu, msize = %llu)\n"
-                 "  (damage pos = %llu (0x%02X->0x%02X), failure pos = %llu, delay = %lld )\n",
-                 idx + 1, lzip_index.members(), mpos, msize,
-                 bad_byte.pos, good_value, bad_value, mpos + failure_pos,
-                 mpos + failure_pos - bad_byte.pos );
+    std::printf( "Test repairing member %s of %s  (mpos = %s, msize = %s)\n"
+                 "  (damage pos = %s (0x%02X->0x%02X), failure pos = %s, delay = %s )\n",
+                 format_num3( idx + 1 ), format_num3( lzip_index.members() ),
+                 format_num3( mpos ), format_num3( msize ),
+                 format_num3( bad_byte.pos ), good_value, bad_value,
+                 format_num3( mpos + failure_pos ),
+                 format_num3( mpos + failure_pos - bad_byte.pos ) );
     std::fflush( stdout );
     }
   if( failure_pos >= msize ) failure_pos = msize - 1;
@@ -469,8 +476,8 @@ int debug_byte_repair( const std::string & input_filename,
 
 /* If show_packets is true, print to stdout descriptions of the decoded LZMA
    packets. Print also some global values; total number of packets in
-   member, max distance (rep0) and its file position, max LZMA packet size
-   in each member and the file position of these packets.
+   member, max distance (dis0) and its position in member, max LZMA packet
+   size in each member and the positions in member of these packets.
    (Packet sizes are a fractionary number of bytes. The packet and marker
    sizes shown by option -X are the number of extra bytes required to decode
    the packet, not counting the data present in the range decoder before and
@@ -500,9 +507,11 @@ int debug_decompress( const std::string & input_filename,
     const long long msize = lzip_index.mblock( i ).size();
     const unsigned dictionary_size = lzip_index.dictionary_size( i );
     if( verbosity >= 1 && show_packets )
-      std::printf( "Decoding LZMA packets in member %ld of %ld  (mpos = %llu, msize = %llu)\n"
-                   "  mpos   dpos\n",
-                   i + 1, lzip_index.members(), mpos, msize );
+      std::printf( "Decoding LZMA packets in member %s of %s "
+                   "(mpos = %s, msize = %s, dpos = %s)\n  ipos   opos\n",
+                   format_num3( i + 1 ), format_num3( lzip_index.members() ),
+                   format_num3( mpos ), format_num3( msize ),
+                   format_num3( dpos ) );
     if( !isvalid_ds( dictionary_size ) )
       { show_error( bad_dict_msg ); retval = 2; break; }
     uint8_t * const mbuffer = read_member( infd, mpos, msize, input_filename );
@@ -513,34 +522,37 @@ int debug_decompress( const std::string & input_filename,
       const uint8_t bad_value = bad_byte( good_value );
       mbuffer[bad_byte.pos-mpos] = bad_value;
       if( verbosity >= 1 && show_packets )
-        std::printf( "Byte at pos %llu changed from 0x%02X to 0x%02X\n",
-                     bad_byte.pos, good_value, bad_value );
+        std::printf( "Byte at pos %s changed from 0x%02X to 0x%02X\n",
+                     format_num3( bad_byte.pos ), good_value, bad_value );
       }
     LZ_mtester mtester( mbuffer, msize, dictionary_size, outfd );
-    const int result = mtester.debug_decode_member( dpos, mpos, show_packets );
+    const int result = mtester.debug_decode_member( show_packets );
     delete[] mbuffer;
     if( show_packets )
       {
       const std::vector< unsigned long long > & mppv = mtester.max_packet_posv();
       const unsigned mpackets = mppv.size();
-      std::printf( "Total packets in member   = %llu\n"
-                   "Max distance in any match = %u at file position %llu\n"
-                   "Max marker size found = %u\n"
-                   "Max packet size found = %u (%u packets)%s",
-                    mtester.total_packets(), mtester.max_distance(),
-                    mtester.max_distance_pos(), mtester.max_marker_size(),
+      std::printf( "Total packets in member = %s\n",
+                    format_num3( mtester.total_packets() ) );
+      if( mtester.max_distance_pos() )
+        std::printf( "Max distance in any match = %s at input position %s\n",
+                      format_num3( mtester.max_distance() ),
+                      format_num3( mtester.max_distance_pos() ) );
+      if( mtester.max_marker_size() )
+        std::printf( "Max marker size found = %u\n", mtester.max_marker_size() );
+      std::printf( "Max packet size found = %u (%u packets)%s",
                     mtester.max_packet_size(), mpackets,
-                    mpackets ? " at file positions" : "" );
+                    mpackets ? " at input positions" : "" );
       for( unsigned i = 0; i < mpackets; ++i )
-        std::printf( " %llu", mppv[i] );
+        std::printf( " %s", format_num3( mppv[i] ) );
       std::fputc( '\n', stdout );
       }
     if( result != 0 )
       {
       if( verbosity >= 0 && result <= 2 && show_packets )
-        std::printf( "%s at pos %llu\n", ( result == 2 ) ?
+        std::printf( "%s at pos %s\n", ( result == 2 ) ?
                      "File ends unexpectedly" : "Decoder error",
-                     mpos + mtester.member_position() );
+                     format_num3( mpos + mtester.member_position() ) );
       retval = 2;
       if( result != 3 || !mtester.finished() || mtester.data_position() !=
           (unsigned long long)lzip_index.dblock( i ).size() ) break;
@@ -550,7 +562,5 @@ int debug_decompress( const std::string & input_filename,
     }
 
   if( !close_outstream( &in_stats ) && retval == 0 ) retval = 1;
-  if( verbosity >= 1 && show_packets && retval == 0 )
-    std::fputs( "Done.\n", stdout );
   return retval;
   }

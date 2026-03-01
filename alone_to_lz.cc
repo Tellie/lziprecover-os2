@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -61,7 +61,7 @@ uint8_t * read_file( const int infd, long * const file_sizep,
     }
   if( errno )
     {
-    show_file_error( filename, read_error_msg, errno );
+    show_file_error( filename, rd_err_msg, errno );
     std::free( buffer ); return 0;
     }
   *file_sizep = file_size;

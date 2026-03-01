@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2023-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2023-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -102,13 +102,78 @@ void xsignal( pthread_cond_t * const cond )
   }
 
 
-unsigned long out_size;
+unsigned long out_size;		// size of fec data written to outfd
 unsigned deliver_id;		// id of worker writing fec packets to outfd
 unsigned check_counter;
 unsigned wait_counter;
 pthread_mutex_t omutex;
 std::vector< pthread_cond_t > may_deliver;	// worker[i] may write
 pthread_mutex_t cmutex = PTHREAD_MUTEX_INITIALIZER;	// cleanup mutex
+
+
+struct Mworker_arg
+  {
+  const uint8_t * prodata;
+  unsigned long prodata_size;
+  md5_type * prodata_md5;
+  unsigned worker_id;
+  };
+
+// compute prodata_md5 and pass the token to the first chksum thread
+extern "C" void * mworker( void * arg )
+  {
+  const Mworker_arg & tmp = *(const Mworker_arg *)arg;
+  const unsigned worker_id = tmp.worker_id;
+
+  compute_md5( tmp.prodata, tmp.prodata_size, *tmp.prodata_md5 );
+  xlock( &omutex );
+  ++check_counter;
+  while( worker_id != deliver_id )
+    { ++wait_counter; xwait( &may_deliver[worker_id], &omutex ); }
+  // allow first chksum worker to update prodata_md5 and write
+  ++deliver_id; xsignal( &may_deliver[deliver_id] );
+  xunlock( &omutex );
+  return 0;
+  }
+
+
+struct Cworker_arg
+  {
+  const uint8_t * prodata;
+  unsigned long prodata_size;
+  const md5_type * prodata_md5;
+  unsigned worker_id;
+  Coded_fbs coded_fbs;
+  bool gf16;
+  bool first;
+  };
+
+// write a chksum packet and, if first, pass the token to the first fec thread
+extern "C" void * cworker( void * arg )
+  {
+  const Cworker_arg & tmp = *(const Cworker_arg *)arg;
+  const unsigned worker_id = tmp.worker_id;
+  const bool first = tmp.first;
+
+  Chksum_packet chksum_packet( tmp.prodata, tmp.prodata_size,
+    *tmp.prodata_md5, tmp.coded_fbs, tmp.gf16, !first );
+  const long packet_size = chksum_packet.packet_size();
+  xlock( &omutex );
+  ++check_counter;
+  while( worker_id != deliver_id )
+    { ++wait_counter; xwait( &may_deliver[worker_id], &omutex ); }
+  chksum_packet.update_prodata_md5( *tmp.prodata_md5 );
+  xlock( &cmutex );				// because of cleanup_and_fail
+  if( writeblock( outfd, chksum_packet.image(), packet_size ) != packet_size )
+    { show_file_error( printable_name( output_filename, false ), wr_err_msg,
+                       errno ); xunlock( &cmutex ); cleanup_and_fail( 1 ); }
+  xunlock( &cmutex );
+  out_size += packet_size;
+  if( first )				// allow first fec worker to write
+    { deliver_id = 0; xsignal( &may_deliver[deliver_id] ); }
+  xunlock( &omutex );
+  return 0;
+  }
 
 
 struct Worker_arg
@@ -123,23 +188,17 @@ struct Worker_arg
   bool gf16;
   };
 
-
 // write a fec packet and pass the token to the next thread
 extern "C" void * worker( void * arg )
   {
   const Worker_arg & tmp = *(const Worker_arg *)arg;
-  const uint8_t * const prodata = tmp.prodata;
-  const uint8_t * const lastbuf = tmp.lastbuf;
-  const unsigned fec_blocks = tmp.fec_blocks;
-  const unsigned k = tmp.k;
   const unsigned num_workers = tmp.num_workers;
   const unsigned worker_id = tmp.worker_id;
-  const Coded_fbs coded_fbs = tmp.coded_fbs;
-  const bool gf16 = tmp.gf16;
 
-  for( unsigned fbn = worker_id; fbn < fec_blocks; fbn += num_workers )
+  for( unsigned fbn = worker_id; fbn < tmp.fec_blocks; fbn += num_workers )
     {
-    const Fec_packet fec_packet( prodata, lastbuf, fbn, k, coded_fbs, gf16 );
+    const Fec_packet fec_packet( tmp.prodata, tmp.lastbuf, fbn, tmp.k,
+                                 tmp.coded_fbs, tmp.gf16 );
     const long packet_size = fec_packet.packet_size();
     xlock( &omutex );
     ++check_counter;
@@ -147,7 +206,8 @@ extern "C" void * worker( void * arg )
       { ++wait_counter; xwait( &may_deliver[worker_id], &omutex ); }
     xlock( &cmutex );				// because of cleanup_and_fail
     if( writeblock( outfd, fec_packet.image(), packet_size ) != packet_size )
-      { xunlock( &cmutex ); cleanup_and_fail( 1 ); }
+      { show_file_error( printable_name( output_filename, false ), wr_err_msg,
+                         errno ); xunlock( &cmutex ); cleanup_and_fail( 1 ); }
     xunlock( &cmutex );
     out_size += packet_size;
     if( ++deliver_id >= num_workers ) deliver_id = 0;
@@ -158,26 +218,43 @@ extern "C" void * worker( void * arg )
   }
 
 
-// start the workers and wait for them to finish.
+/* Start the workers and wait for them to finish.
+   Compute prodata_md5, chksum packets, and fec packets concurrently. */
 bool write_fec_mt( const uint8_t * const prodata,
                    const uint8_t * const lastbuf,
-                   const unsigned fec_blocks, const unsigned k,
-                   const unsigned num_workers, const Coded_fbs coded_fbs,
+                   const unsigned long prodata_size,
+                   md5_type & prodata_md5, const unsigned fec_blocks,
+                   const unsigned k, const unsigned num_workers,
+                   const Coded_fbs coded_fbs, const bool chksum2,
                    const char debug_level, const bool gf16 )
   {
-  if( debug_level & 2 ) std::fputs( "write_fec_mt.\n", stderr );
-  out_size = 0;
-  deliver_id = 0;
+  if( debug_level & 2 ) std::fputs( "executing write_fec_mt\n", stderr );
+  deliver_id = num_workers;			// id of md5 worker
   check_counter = 0;
   wait_counter = 0;
   xinit_mutex( &omutex );
-  may_deliver.resize( num_workers );
+  const unsigned num_threads = num_workers + 2 + chksum2;
+  may_deliver.resize( num_threads );		// fec + mw + cw1 + cw2
   for( unsigned i = 0; i < may_deliver.size(); ++i )
     xinit_cond( &may_deliver[i] );
-  std::vector< Worker_arg > worker_args( num_workers );
   std::vector< pthread_t > worker_threads( num_workers );
+  pthread_t mworker_thread, cworker_thread1, cworker_thread2;
 
-  for( unsigned i = 0; i < num_workers; ++i )
+  // start md5 worker
+  Mworker_arg mworker_arg = { prodata, prodata_size, &prodata_md5, num_workers };
+  int errcode = pthread_create( &mworker_thread, 0, mworker, &mworker_arg );
+  if( errcode ) { show_error( "Can't create md5sum worker thread", errcode );
+                  cleanup_and_fail( 1 ); }
+
+  // start first chksum worker
+  Cworker_arg cworker_arg1 = { prodata, prodata_size, &prodata_md5,
+                               num_workers + 1, coded_fbs, gf16, true };
+  errcode = pthread_create( &cworker_thread1, 0, cworker, &cworker_arg1 );
+  if( errcode ) { show_error( "Can't create first chksum worker thread",
+                  errcode ); cleanup_and_fail( 1 ); }
+
+  std::vector< Worker_arg > worker_args( num_workers );
+  for( unsigned i = 0; i < num_workers; ++i )	// start fec workers
     {
     worker_args[i].prodata = prodata;
     worker_args[i].lastbuf = lastbuf;
@@ -187,17 +264,43 @@ bool write_fec_mt( const uint8_t * const prodata,
     worker_args[i].worker_id = i;
     worker_args[i].coded_fbs = coded_fbs;
     worker_args[i].gf16 = gf16;
-    const int errcode =
-      pthread_create( &worker_threads[i], 0, worker, &worker_args[i] );
+    errcode = pthread_create( &worker_threads[i], 0, worker, &worker_args[i] );
     if( errcode ) { show_error( "Can't create worker threads", errcode );
                     cleanup_and_fail( 1 ); }
     }
 
-  for( unsigned i = 0; i < num_workers; ++i )
+  Cworker_arg cworker_arg2 = { prodata, prodata_size, &prodata_md5,
+                               num_workers + 2, coded_fbs, gf16, false };
+  if( chksum2 )				// start second chksum worker
+    { errcode = pthread_create( &cworker_thread2, 0, cworker, &cworker_arg2 );
+      if( errcode ) { show_error( "Can't create second chksum worker thread",
+                      errcode ); cleanup_and_fail( 1 ); } }
+
+  // wait for md5sum worker
+  errcode = pthread_join( mworker_thread, 0 );
+  if( errcode ) { show_error( "Can't join md5sum worker thread", errcode );
+                  cleanup_and_fail( 1 ); }
+
+  // wait for first chksum worker
+  errcode = pthread_join( cworker_thread1, 0 );
+  if( errcode ) { show_error( "Can't join first chksum worker thread",
+                  errcode ); cleanup_and_fail( 1 ); }
+
+  for( unsigned i = 0; i < num_workers; ++i )	// wait for fec workers
     {
-    const int errcode = pthread_join( worker_threads[i], 0 );
+    errcode = pthread_join( worker_threads[i], 0 );
     if( errcode ) { show_error( "Can't join worker threads", errcode );
                     cleanup_and_fail( 1 ); }
+    }
+
+  if( chksum2 )				// wait for second chksum worker
+    {
+    xlock( &omutex );			// allow second chksum worker to write
+    deliver_id = num_workers + 2; xsignal( &may_deliver[deliver_id] );
+    xunlock( &omutex );
+    errcode = pthread_join( cworker_thread2, 0 );
+    if( errcode ) { show_error( "Can't join second chksum worker thread",
+                    errcode ); cleanup_and_fail( 1 ); }
     }
 
   for( unsigned i = 0; i < may_deliver.size(); ++i )
@@ -209,7 +312,7 @@ bool write_fec_mt( const uint8_t * const prodata,
       "workers started                    %8u\n"
       "any worker tried to write a packet %8u times\n"
       "any worker had to wait             %8u times\n",
-      num_workers, check_counter, wait_counter );
+      num_threads, check_counter, wait_counter );
 
   return true;
   }
@@ -258,20 +361,18 @@ unsigned compute_fec_blocks( const unsigned long prodata_size,
   {
   const unsigned long fbs = coded_fbs.val();
   const unsigned prodata_blocks = ceil_divide( prodata_size, fbs );
-  const unsigned long max_k = (fec_level == 0) ? max_k8 : max_k16;
-  if( !isvalid_fbs( fbs ) || prodata_blocks > max_k ) return 0;
   const unsigned long max_nk = (fec_level == 0) ? max_k8 : max_nk16;
   unsigned fec_blocks;
   if( fctype == fc_blocks ) fec_blocks = std::min( max_nk, fb_or_pct );
   else
     {
-    unsigned long fec_bytes;
+    unsigned long fec_bytes = 0;
     if( fctype == fc_percent )
-      { const double pct = std::max( 1UL, std::min( 100000UL, fb_or_pct ) );
+      { const double pct = std::min( 100000UL, fb_or_pct );
         fec_bytes = (unsigned long)std::ceil( prodata_size * pct / 100000 ); }
     else if( fctype == fc_bytes )
       fec_bytes = std::min( fb_or_pct, prodata_size );
-    else return 0;			// unknown fctype, must not happen
+    else internal_error( "unknown fctype." );
     fec_blocks = std::min( ceil_divide( fec_bytes, fbs ), max_nk );
     }
   if( fec_blocks > prodata_blocks ) fec_blocks = prodata_blocks;
@@ -304,8 +405,7 @@ void random_fbn_vector( const unsigned fec_blocks, const bool gf16,
   }
 
 
-bool write_fec( const char * const input_filename,
-                const uint8_t * const prodata, const unsigned long prodata_size,
+bool write_fec( const uint8_t * const prodata, const unsigned long prodata_size,
                 const unsigned long fb_or_pct, const unsigned cl_block_size,
                 unsigned num_workers, const char debug_level, const char fctype,
                 const char fec_level, const bool cl_gf16, const bool fec_random )
@@ -314,25 +414,42 @@ bool write_fec( const char * const input_filename,
     compute_fbs( prodata_size, cl_block_size, fec_level );
   const unsigned fec_blocks =
     compute_fec_blocks( prodata_size, fb_or_pct, fctype, fec_level, coded_fbs );
-  if( fec_blocks == 0 ) { show_file_error( input_filename,
-    "Input file is too large for fec protection." ); return false; }
-  if( num_workers > fec_blocks ) num_workers = fec_blocks;
+  if( fec_random ) num_workers = 1;
+  else
+    {
+    const long page_size = sysconf( _SC_PAGESIZE );
+    const long pages = sysconf( _SC_PHYS_PAGES );
+    const unsigned long ram_size =
+      ( page_size > 1 && pages > 1 && LONG_MAX / page_size >= pages ) ?
+        page_size * pages : ULONG_MAX;
+    if( prodata_size > ram_size / 2 || num_workers > fec_blocks )
+      num_workers = fec_blocks;
+    }
   const unsigned long fbs = coded_fbs.val();
+  const unsigned chksum_packet_size =
+    Chksum_packet::packet_size( prodata_size, fbs );
+  unsigned long fecdata_size =
+    fec_blocks * Fec_packet::packet_size( fbs ) + chksum_packet_size;
+  const bool chksum2 = fec_blocks > 1 &&
+    ( fecdata_size + chksum_packet_size ) / 2 <= fec_blocks * fbs;
+  if( chksum2 ) fecdata_size += chksum_packet_size;
   const unsigned prodata_blocks = ceil_divide( prodata_size, fbs );
-  md5_type prodata_md5;
-  compute_md5( prodata, prodata_size, prodata_md5 );
-  unsigned chksum_packet_size;
   const bool gf16 = cl_gf16 || prodata_blocks > max_k8 || fec_blocks > max_k8;
+  md5_type prodata_md5;
+  out_size = 0;
+  if( num_workers <= 1 )
+    {
+    compute_md5( prodata, prodata_size, prodata_md5 );
+    const Chksum_packet chksum_packet( prodata, prodata_size, prodata_md5,
+      coded_fbs, gf16, false );				// CRC32 array
+    const long packet_size = chksum_packet.packet_size();
+    if( writeblock( outfd, chksum_packet.image(), packet_size ) != packet_size )
+      goto fail;
+    out_size += packet_size;
+    if( chksum_packet_size != (unsigned)packet_size )
+      internal_error( "wrong first chksum_packet_size." );
+    }
   {
-  const Chksum_packet chksum_packet( prodata, prodata_size, prodata_md5,
-    coded_fbs, gf16, false );				// CRC32 array
-  const long packet_size = chksum_packet.packet_size();
-  if( writeblock( outfd, chksum_packet.image(), packet_size ) != packet_size )
-    goto fail;
-  chksum_packet_size = packet_size;
-  }
-  {
-  unsigned long fecdata_size = chksum_packet_size;
   const uint8_t * const lastbuf = set_lastbuf( prodata, prodata_size, fbs );
   gf16 ? gf16_init() : gf8_init();		// initialize Galois tables
   if( fec_random )
@@ -347,15 +464,14 @@ bool write_fec( const char * const input_filename,
       const long packet_size = fec_packet.packet_size();
       if( writeblock( outfd, fec_packet.image(), packet_size ) != packet_size )
         { delete[] lastbuf; goto fail; }
-      fecdata_size += packet_size;
+      out_size += packet_size;
       }
     }
   else if( num_workers > 1 )
     {
-    if( !write_fec_mt( prodata, lastbuf, fec_blocks, prodata_blocks,
-                       num_workers, coded_fbs, debug_level, gf16 ) )
-      { delete[] lastbuf; goto fail; }
-    fecdata_size += out_size;
+    if( !write_fec_mt( prodata, lastbuf, prodata_size, prodata_md5, fec_blocks,
+                       prodata_blocks, num_workers, coded_fbs, chksum2,
+                       debug_level, gf16 ) ) { delete[] lastbuf; goto fail; }
     }
   else for( unsigned fbn = 0; fbn < fec_blocks; ++fbn )
     {
@@ -364,25 +480,28 @@ bool write_fec( const char * const input_filename,
     const long packet_size = fec_packet.packet_size();
     if( writeblock( outfd, fec_packet.image(), packet_size ) != packet_size )
       { delete[] lastbuf; goto fail; }
-    fecdata_size += packet_size;
+    out_size += packet_size;
     }
   delete[] lastbuf;
-  if( ( fecdata_size + chksum_packet_size ) / 2 <= fec_blocks * fbs &&
-      fec_blocks > 1 )			// write the second chksum packet
+  if( chksum2 && num_workers <= 1 )	// write the second chksum packet
     {
     const Chksum_packet chksum_packet( prodata, prodata_size, prodata_md5,
       coded_fbs, gf16, true );				// CRC32-C array
     const long packet_size = chksum_packet.packet_size();
     if( writeblock( outfd, chksum_packet.image(), packet_size ) != packet_size )
       goto fail;
-    fecdata_size += packet_size;
+    out_size += packet_size;
+    if( chksum_packet_size != (unsigned)packet_size )
+      internal_error( "wrong second chksum_packet_size." );
     }
-  if( fecdata_size % 4 != 0 ) internal_error( "fecdata_size % 4 != 0" );
   if( verbosity >= 1 )
-    std::fprintf( stderr, "  %s: %s bytes, %s fec bytes, %u blocks\n",
+    std::fprintf( stderr, "  %s: %s bytes, %s fec bytes, %u %s\n",
                   printable_name( output_filename, false ),
                   format_num3( fecdata_size ),
-                  format_num3( fec_blocks * fbs ), fec_blocks );
+                  format_num3( fec_blocks * fbs ), fec_blocks,
+                  (fec_blocks == 1) ? "block" : "blocks" );
+  if( fecdata_size % 4 != 0 ) internal_error( "fecdata_size % 4 != 0" );
+  if( fecdata_size != out_size ) internal_error( "fecdata_size != out_size" );
   return true;
   }
 fail:
@@ -391,10 +510,11 @@ fail:
   }
 
 
-int open_instream2( const std::string & name, struct stat * const in_statsp )
+int open_instream2( const std::string & name, struct stat * const in_statsp,
+                    const bool force )
   {
   if( !has_fec_extension( name ) )
-    return open_instream( name.c_str(), in_statsp, false, true );
+    return open_instream( name.c_str(), in_statsp, false, !force );
   if( verbosity >= 0 )
     std::fprintf( stderr, "%s: %s: Input file already has '%s' suffix, ignored.\n",
                   program_name, name.c_str(), fec_extension );
@@ -409,6 +529,8 @@ Chksum_packet::Chksum_packet( const uint8_t * const prodata,
                  const md5_type & prodata_md5, const Coded_fbs coded_fbs,
                  const bool gf16_, const bool is_crc_c_ )
   {
+//const long t0 = std::time( 0 );
+//std::fprintf( stderr, "chk %u in (%lds)\n", is_crc_c_, std::time( 0 ) - t0 );
   const unsigned long fbs = coded_fbs.val();
   const unsigned prodata_blocks = ceil_divide( prodata_size, fbs );
   if( prodata_blocks * fbs < prodata_size )
@@ -447,6 +569,16 @@ Chksum_packet::Chksum_packet( const uint8_t * const prodata,
   // compute CRC32 of payload (crc array)
   set_le( ip + crc_array_o + paysize, crc32_l,
           crc32.compute_crc( image_ + crc_array_o, paysize ) );
+//std::fprintf( stderr, "chk %u out (%lds)\n", is_crc_c_, std::time( 0 ) - t0 );
+  }
+
+bool Chksum_packet::update_prodata_md5( const md5_type & prodata_md5 )
+  {
+  if( image_is_external ) return false;
+  uint8_t * const ip = (uint8_t *)image_;		// writable image ptr
+  *(md5_type *)(ip + prodata_md5_o) = prodata_md5;
+  set_le( ip + header_crc_o, crc32_l, compute_header_crc( image_ ) );
+  return true;
   }
 
 
@@ -455,6 +587,8 @@ Fec_packet::Fec_packet( const uint8_t * const prodata,
                         const unsigned fbn, const unsigned k,
                         const Coded_fbs coded_fbs, const bool gf16 )
   {
+//const long t0 = std::time( 0 );
+//std::fprintf( stderr, "fec %u in (%lds)\n", fbn, std::time( 0 ) - t0 );
   const unsigned long fbs = coded_fbs.val();
   const unsigned long packet_size = header_size + fbs + trailer_size;
   if( packet_size <= fbs || !fits_in_size_t( packet_size ) )
@@ -474,6 +608,7 @@ Fec_packet::Fec_packet( const uint8_t * const prodata,
   // compute CRC32 of payload (fec array)
   set_le( ip + fec_block_o + fbs, crc32_l,
           crc32.compute_crc( image_ + fec_block_o, fbs ) );
+//std::fprintf( stderr, "fec %u out (%lds)\n", fbn, std::time( 0 ) - t0 );
   }
 
 
@@ -555,16 +690,26 @@ int fec_create( const std::vector< std::string > & filenames,
     while( next_filename( filelist, input_filename, retval, recursive ) )
       {
       struct stat in_stats;
-      const int infd = open_instream2( input_filename, &in_stats );
+      const int infd = open_instream2( input_filename, &in_stats, force );
       if( infd < 0 ) { set_retval( retval, 1 ); continue; }
 
       const char * const input_filenamep = input_filename.c_str();
       const long long file_size = lseek( infd, 0, SEEK_END );
       if( file_size <= 0 )
-        { show_file_error( input_filenamep, "Input file is empty." );
+        { if( file_size < 0 )
+            show_file_error( input_filenamep, seek_msg, errno );
+          else show_file_error( input_filenamep, empty_file_msg );
           set_retval( retval, 2 ); close( infd ); continue; }
       if( !fits_in_size_t( file_size ) )
         { show_file_error( input_filenamep, large_file_msg );
+          set_retval( retval, 1 ); close( infd ); continue; }
+      if( (unsigned long long)file_size > max_prodata_size8 && fec_level == 0 )
+        { show_file_error( input_filenamep,
+            "Input file is too large for fec protection at fec level 0." );
+          set_retval( retval, 1 ); close( infd ); continue; }
+      if( (unsigned long long)file_size > max_prodata_size )
+        { show_file_error( input_filenamep,
+            "Input file is too large for fec protection." );
           set_retval( retval, 1 ); close( infd ); continue; }
       const unsigned long prodata_size = file_size;
       const uint8_t * const prodata =
@@ -594,9 +739,9 @@ int fec_create( const std::vector< std::string > & filenames,
         }
 
       // write fec data to output file
-      if( !write_fec( input_filenamep, prodata, prodata_size, fb_or_pct,
-                      cl_block_size, num_workers, debug_level, fctype,
-                      fec_level, cl_gf16, fec_random ) )
+      if( !write_fec( prodata, prodata_size, fb_or_pct, cl_block_size,
+                      num_workers, debug_level, fctype, fec_level, cl_gf16,
+                      fec_random ) )
         { munmap( (void *)prodata, prodata_size ); cleanup_and_fail( 1 ); }
       /* To avoid '-Fc | -Ft' running out of address space, munmap before
          closing outfd and mmap after reading fec data from stdin */

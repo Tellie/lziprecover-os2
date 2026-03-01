@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2023-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2023-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -58,8 +58,12 @@ inline uint8_t * set_lastbuf( const uint8_t * const prodata,
   return lastbuf;		// copy of last data block padded to fbs bytes
   }
 
-enum { min_fbs = 512, max_unit_fbs = 1 << 30 };		//   1 GiB
-const unsigned long long max_fbs = 1ULL << 47;		// 128 TiB
+enum { min_fbs = 512, max_unit_fbs = 1 << 30 };			//   1 GiB
+const unsigned long long max_fbs = 1ULL << 47;			// 128 TiB
+enum { max_k8 = 128, max_k16 = 32768, max_nk16 = 2048 };
+const unsigned long long max_prodata_size8 = max_fbs * max_k8;	//  16 PiB
+const unsigned long long max_prodata_size = max_fbs * max_k16;	//   4 EiB
+const char * const fec_extension = ".fec";
 
 inline bool isvalid_fbs( const unsigned long long fbs )
   { return fbs >= min_fbs && fbs <= max_fbs && fbs % min_fbs == 0; }
@@ -148,9 +152,6 @@ public:
                  const md5_type & prodata_md5, const Coded_fbs coded_fbs,
                  const bool gf16_, const bool is_crc_c_ );
 
-  unsigned long long packet_size() const
-    { return ceil_divide( prodata_size(), fec_block_size() ) *
-             sizeof crc_array()[0] + header_size + trailer_size; }
   unsigned long long prodata_size() const
     { return get_le( image_ + prodata_size_o, prodata_size_l ); }
   const md5_type & prodata_md5() const
@@ -165,6 +166,21 @@ public:
   const le32 * crc_array() const
     { return (const le32 *)(image_ + crc_array_o); }
 
+  bool update_prodata_md5( const md5_type & prodata_md5 );
+
+  unsigned prodata_blocks() const
+    { return ceil_divide( prodata_size(), fec_block_size() ); }
+  unsigned packet_size() const
+    { return prodata_blocks() * sizeof crc_array()[0] +
+             header_size + trailer_size; }
+
+  static unsigned long long prodata_blocks( const unsigned long prodata_size,
+                                            const unsigned long fbs )
+    { return ceil_divide( prodata_size, fbs ); }
+  static unsigned long long packet_size( const unsigned long prodata_size,
+                                         const unsigned long fbs )
+    { return ceil_divide( prodata_size, fbs ) *
+      sizeof Chksum_packet( 0 ).crc_array()[0] + header_size + trailer_size; }
   static unsigned min_packet_size()
     { return header_size + le32::size + trailer_size; }
   static uint8_t version( const uint8_t * const image_buffer )
@@ -204,14 +220,17 @@ public:
               const unsigned fbn, const unsigned k,
               const Coded_fbs coded_fbs, const bool gf16 );
 
-  unsigned long long packet_size() const
-    { return header_size + fec_block_size() + trailer_size; }
   unsigned fec_block_number() const
     { return get_le( image_ + fbn_o, fbn_l ); }
   unsigned long long fec_block_size() const	// number of fec bytes
     { return ((Coded_fbs *)(image_ + fbs_o))->val(); }
   const uint8_t * fec_block() const { return image_ + fec_block_o; }
 
+  unsigned long long packet_size() const
+    { return header_size + fec_block_size() + trailer_size; }
+
+  static unsigned long long packet_size( const unsigned long fbs )
+    { return header_size + fbs + trailer_size; }
   static unsigned min_packet_size()
     { return header_size + min_fbs + trailer_size; }
 
@@ -219,9 +238,6 @@ public:
                                     const unsigned long max_size );
   };
 
-
-enum { max_k8 = 128, max_k16 = 32768, max_nk16 = 2048 };
-const char * const fec_extension = ".fec";
 
 inline void prot_stdin()
   { show_file_error( "(stdin)", "Can't read protected data from standard input." ); }
@@ -252,12 +268,13 @@ int fec_list( const std::vector< std::string > & filenames,
               const bool ignore_errors );
 int fec_dc( const std::string & input_filename,
             const std::string & cl_fec_filename, const unsigned cblocks );
+int fec_df( const std::vector< std::string > & filenames );
 int fec_dz( const std::string & input_filename,
             const std::string & cl_fec_filename,
             std::vector< Block > & range_vector );
 int fec_dZ( const std::string & input_filename,
             const std::string & cl_fec_filename,
-            const unsigned delta, const int sector_size );
+            unsigned delta, unsigned sector_size );
 
 // defined in recursive.cc
 bool next_filename( std::list< std::string > & filelist,
@@ -284,13 +301,13 @@ void rs16_encode( const uint8_t * const buffer, const uint8_t * const lastbuf,
    fecbuf: as many fec blocks as missing data blocks in the order of fbn_vector.
    The repaired data blocks are written in their place in buffer and lastbuf.
 */
-void rs8_decode( uint8_t * const buffer, uint8_t * const lastbuf,
+void rs8_decode( const uint8_t * const buffer, const uint8_t * const lastbuf,
                  const std::vector< unsigned > & bb_vector,
                  const std::vector< unsigned > & fbn_vector,
-                 uint8_t * const fecbuf, const unsigned long fbs,
-                 const unsigned k );
-void rs16_decode( uint8_t * const buffer, uint8_t * const lastbuf,
+                 uint8_t * const fecbuf, uint8_t * const dstbuf,
+                 const unsigned long fbs, const unsigned k );
+void rs16_decode( const uint8_t * const buffer, const uint8_t * const lastbuf,
                   const std::vector< unsigned > & bb_vector,
                   const std::vector< unsigned > & fbn_vector,
-                  uint8_t * const fecbuf, const unsigned long fbs,
-                  const unsigned k );
+                  uint8_t * const fecbuf, uint8_t * const dstbuf,
+                  const unsigned long fbs, const unsigned k );

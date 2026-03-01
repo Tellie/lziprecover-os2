@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -65,7 +65,7 @@ bool file_crc( uint32_t & crc, const int infd, const char * const filename )
     {
     const int rd = readblock( infd, buffer, buffer_size );
     if( rd != buffer_size && errno )
-      { show_file_error( filename, read_error_msg, errno );
+      { show_file_error( filename, rd_err_msg, errno );
         error = true; break; }
     if( rd > 0 )
       crc32.update_buf( crc, buffer, rd );
@@ -151,12 +151,12 @@ bool diff_member( const long long mpos, const long long msize,
         const int size = std::min( (long long)buffer_size, msize - partial_pos );
         const int rd = readblock( fd1, buffer1, size );
         if( rd != size && errno )
-          { show_file_error( filenames[i1].c_str(), read_error_msg, errno );
+          { show_file_error( filenames[i1].c_str(), rd_err_msg, errno );
             error = true; break; }
         if( rd > 0 )
           {
           if( readblock( fd2, buffer2, rd ) != rd )
-            { show_file_error( filenames[i2].c_str(), read_error_msg, errno );
+            { show_file_error( filenames[i2].c_str(), rd_err_msg, errno );
               error = true; break; }
           for( int i = 0; i < rd; ++i )
             {
@@ -260,7 +260,7 @@ int open_input_files( const std::vector< std::string > & filenames,
       tmp = lseek( infd_vector[i], 0, SEEK_END );
       if( tmp < 0 )
         {
-        show_file_error( filenames[i].c_str(), "Input file is not seekable." );
+        show_file_error( filenames[i].c_str(), seek_msg, errno );
         return 1;
         }
       }
@@ -331,8 +331,8 @@ void maybe_cluster_blocks( std::vector< Block > & block_vector )
       }
     } while( block_vector.size() > 16 );
   if( verbosity >= 1 && old_size > block_vector.size() )
-    std::printf( "  %lu errors have been grouped in %lu clusters.\n",
-                 old_size, (long)block_vector.size() );
+    std::printf( "  %s errors have been grouped in %s clusters.\n",
+                 format_num3( old_size ), format_num3( block_vector.size() ) );
   }
 
 
@@ -420,8 +420,8 @@ bool try_merge_member( const std::vector< std::string > & filenames,
       {
       long var = 0;
       for( int i = 0; i < blocks; ++i ) var = var * files + file_idx[i];
-      std::printf( "  Trying variation %ld of %ld %c",
-                   var + 1, variations, terminator );
+      std::printf( "  Trying variation %s of %s %c", format_num3( var + 1 ),
+                   format_num3( variations ), terminator );
       std::fflush( stdout ); pending_newline = true;
       }
     while( bi < blocks )
@@ -480,8 +480,8 @@ bool try_merge_member1( const std::vector< std::string > & filenames,
         {
         if( verbosity >= 2 )
           {
-          std::printf( "  Trying variation %d of %d, position %lld        %c",
-                       var, variations, pos + i, terminator );
+          std::printf( "  Trying variation %d of %d, position %s        %c",
+                       var, variations, format_num3( pos + i ), terminator );
           std::fflush( stdout ); pending_newline = true;
           }
         if( !safe_seek( outfd, pos + i, output_filename ) ||
@@ -507,7 +507,7 @@ bool try_merge_member1( const std::vector< std::string > & filenames,
 bool copy_file( const int infd, const int outfd, const std::string & iname,
                 const std::string & oname, const long long max_size )
   {
-  const int buffer_size = 65536;
+  const long long buffer_size = 65536;
   // remaining number of bytes to copy
   long long rest = (max_size >= 0) ? max_size : buffer_size;
   long long copied_size = 0;
@@ -516,11 +516,11 @@ bool copy_file( const int infd, const int outfd, const std::string & iname,
 
   while( rest > 0 )
     {
-    const int size = std::min( (long long)buffer_size, rest );
+    const int size = std::min( buffer_size, rest );
     if( max_size >= 0 ) rest -= size;
     const int rd = readblock( infd, buffer, size );
     if( rd != size && errno )
-      { show_file_error( printable_name( iname ), read_error_msg, errno );
+      { show_file_error( printable_name( iname ), rd_err_msg, errno );
         error = true; break; }
     if( rd > 0 )
       {
@@ -605,16 +605,17 @@ int merge_files( const std::vector< std::string > & filenames,
       if( lzip_index.members() > 1 && test_member_from_file( outfd, msize ) == 0 )
         continue;
       if( verbosity >= 0 )
-        std::fprintf( stderr, "Member %ld is damaged and identical in all files."
-                              " Merging is not possible.\n", j + 1 );
+        std::fprintf( stderr, "Member %s is damaged and identical in all files."
+                      " Merging is not possible.\n", format_num3( j + 1 ) );
       cleanup_and_fail( 2 );
       }
 
     if( verbosity >= 2 )
       {
-      std::printf( "Merging member %ld of %ld  (%lu error%s)\n",
-                   j + 1, lzip_index.members(), (long)block_vector.size(),
-                   ( block_vector.size() == 1 ) ? "" : "s" );
+      std::printf( "Merging member %s of %s  (%s %s)\n",
+                   format_num3( j + 1 ), format_num3( lzip_index.members() ),
+                   format_num3( block_vector.size() ),
+                   ( block_vector.size() == 1 ) ? "error" : "errors" );
       std::fflush( stdout );
       }
 
@@ -643,8 +644,9 @@ int merge_files( const std::vector< std::string > & filenames,
       {
       if( verbosity >= 3 )
         for( unsigned i = 0; i < block_vector.size(); ++i )
-          std::fprintf( stderr, "area %2d from position %6lld to %6lld\n", i + 1,
-                        block_vector[i].pos(), block_vector[i].end() - 1 );
+          std::fprintf( stderr, "area %2u from position %6s to %6s\n", i + 1,
+                        format_num3( block_vector[i].pos() ),
+                        format_num3( block_vector[i].end() - 1 ) );
       show_error( "Some error areas overlap. Merging is not possible." );
       cleanup_and_fail( 2 );
       }

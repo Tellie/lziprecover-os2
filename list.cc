@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -37,12 +37,13 @@ void list_line( const unsigned long long uncomp_size,
                 const char * const input_filename )
   {
   if( uncomp_size > 0 )
-    std::printf( "%14llu %14llu %6.2f%%  %s\n", uncomp_size, comp_size,
-                  100.0 - ( ( 100.0 * comp_size ) / uncomp_size ),
-                  input_filename );
+    std::printf( "%14s %14s %6.2f%%  %s\n",
+                 format_num3( uncomp_size ), format_num3( comp_size ),
+                 100.0 - ( ( 100.0 * comp_size ) / uncomp_size ),
+                 input_filename );
   else
     std::printf( "%14llu %14llu   -INF%%  %s\n", uncomp_size, comp_size,
-                  input_filename );
+                 input_filename );
   }
 
 } // end namespace
@@ -52,7 +53,8 @@ int list_files( const std::vector< std::string > & filenames,
                 const Cl_options & cl_opts )
   {
   unsigned long long total_comp = 0, total_uncomp = 0;
-  int files = 0, retval = 0;
+  unsigned files = 0;
+  int retval = 0;
   bool first_post = true;
   bool stdin_used = false;
 
@@ -82,40 +84,43 @@ int list_files( const std::vector< std::string > & filenames,
     if( verbosity < 0 ) continue;
     const unsigned long long udata_size = lzip_index.udata_size();
     const unsigned long long cdata_size = lzip_index.cdata_size();
+    const unsigned long long tdata_size = lzip_index.file_size() - cdata_size;
     total_comp += cdata_size; total_uncomp += udata_size; ++files;
     const long members = lzip_index.members();
     if( first_post )
       {
       first_post = false;
-      if( verbosity >= 1 ) std::fputs( "   dict   memb  trail ", stdout );
+      if( verbosity >= 1 ) std::fputs( "   dict    memb  ", stdout );
       std::fputs( "  uncompressed     compressed   saved  name\n", stdout );
       }
-    if( multi_empty )
-      { std::fflush( stdout ); show_file_error( input_filename, empty_msg ); }
+    if( multi_empty ) { std::fflush( stdout );
+      show_file_error( input_filename, empty_member_msg ); }
     if( verbosity >= 1 )
-      std::printf( "%s %5ld %6lld ", format_ds( lzip_index.dictionary_size() ),
-                   members, lzip_index.file_size() - cdata_size );
+      std::printf( "%s %5lu%s ", format_ds( lzip_index.dictionary_size() ),
+                   members, tdata_size ? "+t" : "  " );
     list_line( udata_size, cdata_size, input_filename );
 
-    if( verbosity >= 2 && ( members > 1 ||
+    if( verbosity >= 2 && ( members > 1 || tdata_size > 0 ||
         ( members == 1 && lzip_index.mblock( 0 ).pos() > 0 ) ) )
       {
       std::fputs( " member      data_pos      data_size     member_pos    member_size\n", stdout );
       long long prev_end = 0;
-      for( long i = 0, gaps = 0; i < members; ++i )
+      for( long j = 0, gaps = 0; j < members; ++j )
         {
-        const Block & db = lzip_index.dblock( i );
-        const Block & mb = lzip_index.mblock( i );
+        const Block & db = lzip_index.dblock( j );
+        const Block & mb = lzip_index.mblock( j );
         if( mb.pos() > prev_end )
-          {
-          std::printf( "   gap              -              - %14llu %14llu\n",
-                       prev_end, mb.pos() - prev_end );
-          ++gaps;
-          }
-        std::printf( "%6ld %14llu %14llu %14llu %14llu\n",
-                     i + gaps + 1, db.pos(), db.size(), mb.pos(), mb.size() );
+          { std::printf( "   gap              -              - %14s %14s\n",
+                         format_num3( prev_end ),
+                         format_num3( mb.pos() - prev_end ) ); ++gaps; }
+        std::printf( "%6s %14s %14s %14s %14s\n", format_num3( j + gaps + 1 ),
+                     format_num3( db.pos() ), format_num3( db.size() ),
+                     format_num3( mb.pos() ), format_num3( mb.size() ) );
         prev_end = mb.end();
         }
+      if( tdata_size > 0 ) std::printf( " tdata %44s %14s\n",
+        format_num3( cdata_size ), format_num3( tdata_size ) );
+      if( i + 1 < filenames.size() || files > 1 ) std::fputc( '\n', stdout );
       first_post = true;	// reprint heading after list of members
       }
     std::fflush( stdout );
@@ -123,7 +128,9 @@ int list_files( const std::vector< std::string > & filenames,
     }
   if( verbosity >= 0 && files > 1 && !std::ferror( stdout ) )
     {
-    if( verbosity >= 1 ) std::fputs( "                      ", stdout );
+    if( verbosity >= 2 && first_post )
+      std::fputs( "                   uncompressed     compressed   saved\n", stdout );
+    if( verbosity >= 1 ) std::fputs( "                 ", stdout );
     list_line( total_uncomp, total_comp, "(totals)" );
     std::fflush( stdout );
     }

@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -247,16 +247,16 @@ class LZ_mtester
   unsigned stream_pos;		// first byte not yet written to file
   uint32_t crc_;
   const int outfd;		// output file descriptor
-  unsigned rep0;		// rep[0-3] latest four distances
-  unsigned rep1;		// used for efficient coding of
-  unsigned rep2;		// repeated distances
-  unsigned rep3;
+  unsigned dis0;		// dis[0-3] latest four distances
+  unsigned dis1;		// used for efficient coding of
+  unsigned dis2;		// repeated distances
+  unsigned dis3;
   State state;
   MD5SUM * const md5sum;
   unsigned long long total_packets_;	// total number of packets in member
-  unsigned long long max_rep0_pos;	// file position of maximum distance
-  unsigned max_rep0;			// maximum distance found
-  std::vector< unsigned long long > max_packet_posv_;	// file pos of large packets
+  unsigned long long max_dis0_pos;	// member position of maximum distance
+  unsigned max_dis0;			// maximum distance found
+  std::vector< unsigned long long > max_packet_posv_;	// member pos of large packets
   unsigned max_packet_size_;		// maximum packet size found
   unsigned max_marker_size_;		// maximum marker size found
   bool pos_wrapped;
@@ -351,19 +351,18 @@ public:
     stream_pos( 0 ),
     crc_( 0xFFFFFFFFU ),
     outfd( ofd ),
-    rep0( 0 ),
-    rep1( 0 ),
-    rep2( 0 ),
-    rep3( 0 ),
+    dis0( 0 ),
+    dis1( 0 ),
+    dis2( 0 ),
+    dis3( 0 ),
     md5sum( md5sum_ ),
     total_packets_( -1ULL ),		// don't count EOS marker
-    max_rep0_pos( 0 ),
-    max_rep0( 0 ),
+    max_dis0_pos( 0 ),
+    max_dis0( 0 ),
     max_packet_size_( 0 ),
     max_marker_size_( 0 ),
     pos_wrapped( false ), buffer_is_external( false )
-    // prev_byte of first byte; also for peek( 0 ) on corrupt file
-    { buffer[dictionary_size-1] = 0; }
+    { buffer[dictionary_size-1] = 0; }		// prev_byte of first byte
 
   ~LZ_mtester() { if( !buffer_is_external ) delete[] buffer; }
 
@@ -372,8 +371,8 @@ public:
   bool finished() { return rdec.finished(); }
   unsigned long member_position() const { return rdec.member_position(); }
   unsigned long long total_packets() const { return total_packets_; }
-  unsigned long long max_distance_pos() const { return max_rep0_pos; }
-  unsigned max_distance() const { return max_rep0 + 1; }
+  unsigned long long max_distance_pos() const { return max_dis0_pos; }
+  unsigned max_distance() const { return max_dis0 + 1; }
   const std::vector< unsigned long long > & max_packet_posv() const
     { return max_packet_posv_; }
   unsigned max_packet_size() const { return max_packet_size_; }
@@ -387,12 +386,11 @@ public:
 
   void duplicate_buffer( uint8_t * const buffer2 );
 
-  // these two functions set max_rep0
+  // these two functions set max_dis0
   int test_member( const unsigned long mpos_limit = LONG_MAX,
                    const unsigned long long dpos_limit = LLONG_MAX,
                    FILE * const f = 0, const unsigned long long byte_pos = 0 );
-  /* this function also sets max_rep0_pos, total_packets_, max_packet_size_,
+  /* this function also sets max_dis0_pos, total_packets_, max_packet_size_,
                              max_packet_posv_, and max_marker_size_ */
-  int debug_decode_member( const long long dpos, const long long mpos,
-                           const bool show_packets );
+  int debug_decode_member( const bool show_packets );
   };

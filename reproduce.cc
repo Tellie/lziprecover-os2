@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -39,6 +39,8 @@
 
 namespace {
 
+const char * const large_member_msg =
+                   "Input file contains member too large for mmap.";
 const char * final_msg = 0;
 
 bool pending_newline = false;
@@ -52,10 +54,11 @@ int fatal_retval = 0;
 int fatal( const int retval )
   { if( fatal_retval == 0 ) fatal_retval = retval; return retval; }
 
-// Return the position of the damaged area in the member, or -1 if error.
-long zeroed_sector_pos( const uint8_t * const mbuffer, const long msize,
-                        const char * const input_filename,
-                        long * const sizep, uint8_t * const valuep )
+/* Detect bursts of identical bytes in member.
+   Return the position of the damaged area in the member, or -1 if error. */
+long bursted_pos( const uint8_t * const mbuffer, const long msize,
+                  const char * const input_filename,
+                  long * const sizep, uint8_t * const valuep = 0 )
   {
   enum { minlen = 8 };		// min number of consecutive identical bytes
   long i = Lzip_header::size;
@@ -72,23 +75,15 @@ long zeroed_sector_pos( const uint8_t * const mbuffer, const long msize,
       ++i;
       while( i < msize && mbuffer[i] == byte ) ++i;
       if( i - pos >= minlen )
-        {
-        if( size > 0 )
-          { show_file_error( input_filename,
-                             "Member contains more than one damaged area." );
-            return -1; }
-        begin = pos;
-        size = i - pos;
-        value = byte;
-        break;
-        }
+        { if( size <= 0 ) { begin = pos; value = byte; }
+          size = i - begin; }
       }
     }
   if( begin < 0 || size <= 0 )
     { show_file_error( input_filename, "Can't locate damaged area." );
       return -1; }
   *sizep = size;
-  *valuep = value;
+  if( valuep ) *valuep = value;
   return begin;
   }
 
@@ -157,11 +152,12 @@ long match_file( const LZ_mtester & master, const uint8_t * const rbuf,
   if( offset >= 0 )
     {
     if( multiple && verbosity >= 1 )
-      { std::printf( "warning: %s: Multiple matches. Using match at offset %ld\n",
-                     reference_filename, offset ); std::fflush( stdout ); }
+      { std::printf( "warning: %s: Multiple matches. Using match at offset %s\n",
+                     reference_filename, format_num3( offset ) );
+        std::fflush( stdout ); }
     if( !multiple && verbosity >= 2 )
-      { std::printf( "%s: Match found at offset %ld\n",
-                     reference_filename, offset ); std::fflush( stdout ); }
+      { std::printf( "%s: Match found at offset %s\n", reference_filename,
+                     format_num3( offset ) ); std::fflush( stdout ); }
     return offset;
     }
   int maxlen = 0;		// choose longest match in reference file
@@ -183,9 +179,10 @@ long match_file( const LZ_mtester & master, const uint8_t * const rbuf,
   if( maxlen >= 512 && offset >= 0 )
     {
     if( verbosity >= 1 )
-      { std::printf( "warning: %s: Partial match found at offset %ld, len %d."
+      { std::printf( "warning: %s: Partial match found at offset %s, len %s."
                      " Reference data may be mixed with other data.\n",
-                     reference_filename, offset, maxlen );
+                     reference_filename, format_num3( offset ),
+                     format_num3( maxlen ) );
         std::fflush( stdout ); }
     return offset;
     }
@@ -371,7 +368,7 @@ int try_reproduce( uint8_t * const mbuffer, const long msize,
       {
       if( first_post )
         { first_post = false; print_pending_newline( terminator ); }
-      std::printf( "  Reproducing position %ld %c", i, terminator );
+      std::printf( "  Reproducing position %s %c", format_num3( i ), terminator );
       std::fflush( stdout ); pending_newline = true;
       }
     const int rd = readblock( fda2[0], buffer, buffer_size );
@@ -424,10 +421,9 @@ done:
 // Return value: -1 = master failed, 0 = success, > 0 = failure
 int reproduce_member( uint8_t * const mbuffer, const long msize,
                       const long long dsize, const char * const lzip_name,
-                      const char * const reference_filename,
-                      const long begin, const long size,
-                      const int lzip_level, MD5SUM * const md5sump,
-                      const char terminator )
+                      const char * const reference_filename, const long begin,
+                      const long size, const int lzip_level,
+                      MD5SUM * const md5sump, const char terminator )
   {
   struct stat st;
   const int rfd = open_instream( reference_filename, &st, false, true );
@@ -450,8 +446,9 @@ int reproduce_member( uint8_t * const mbuffer, const long msize,
   if( !master ) return -1;
   if( verbosity >= 2 )
     {
-    std::printf( "  (master mpos = %lu, dpos = %llu)\n",
-                 master->member_position(), master->data_position() );
+    std::printf( "  (master mpos = %s, dpos = %s)\n",
+                 format_num3( master->member_position() ),
+                 format_num3( master->data_position() ) );
     std::fflush( stdout );
     }
 
@@ -537,7 +534,7 @@ int reproduce_file( const std::string & input_filename,
     to_file ? default_output_filename : insert_fixed( input_filename );
   if( !force && output_file_exists() ) return 1;
   outfd = -1;
-  int errors = 0;
+  unsigned errors = 0;
   const long page_size = std::max( 1L, sysconf( _SC_PAGESIZE ) );
   for( long i = 0; i < lzip_index.members(); ++i )
     {
@@ -546,8 +543,8 @@ int reproduce_file( const std::string & input_filename,
     const long long msize = lzip_index.mblock( i ).size();
     if( verbosity >= 1 && lzip_index.members() > 1 )
       {
-      std::printf( "Testing member %ld of %ld %c",
-                   i + 1, lzip_index.members(), terminator );
+      std::printf( "Testing member %s of %s %c", format_num3( i + 1 ),
+                   format_num3( lzip_index.members() ), terminator );
       std::fflush( stdout ); pending_newline = true;
       }
     if( !safe_seek( infd, mpos, input_filename ) ) return 1;
@@ -559,8 +556,7 @@ int reproduce_file( const std::string & input_filename,
     if( failure_pos < Lzip_header::size )		// End Of File
       { show_file_error( filename, "Unexpected end of file." ); return 2; }
     if( !fits_in_size_t( msize + page_size ) )		// mmap uses size_t
-      { show_file_error( filename,
-          "Input file contains member too large for mmap." ); return 1; }
+      { show_file_error( filename, large_member_msg ); return 1; }
 
     // without mmap, 3 times more memory are required because of fork
     const long mpos_rem = mpos % page_size;
@@ -571,17 +567,17 @@ int reproduce_file( const std::string & input_filename,
     uint8_t * const mbuffer = mbuffer_base + mpos_rem;
     long size = 0;
     uint8_t value = 0;
-    const long begin =
-      zeroed_sector_pos( mbuffer, msize, filename, &size, &value );
+    const long begin = bursted_pos( mbuffer, msize, filename, &size, &value );
     if( begin < 0 ) return 2;
     if( failure_pos < begin )
       { show_file_error( filename, "Data error found before damaged area." );
         return 2; }
     if( verbosity >= 1 )
       {
-      std::printf( "Reproducing bad area in member %ld of %ld\n"
-                   "  (begin = %ld, size = %ld, value = 0x%02X)\n",
-                   i + 1, lzip_index.members(), begin, size, value );
+      std::printf( "Reproducing bad area in member %s of %s\n"
+                   "  (begin = %s, size = %s, value = 0x%02X)\n",
+                   format_num3( i + 1 ), format_num3( lzip_index.members() ),
+                   format_num3( begin ), format_num3( size ), value );
       std::fflush( stdout );
       }
     const int ret = reproduce_member( mbuffer, msize, dsize, lzip_name,
@@ -661,8 +657,8 @@ int debug_reproduce_file( const std::string & input_filename,
   const long long positions_to_test =
     ( ( std::min( range.size(), cdata_size - range.pos() ) ) +
       sector_size - 9 ) / sector_size;
-  long positions = 0, successes = 0, failed_comparisons = 0;
-  long alternative_reproductions = 0;
+  unsigned long positions = 0, successes = 0, failed_comparisons = 0,
+                alternative_reproductions = 0;
   const bool pct_enabled = cdata_size > sector_size &&
                            isatty( STDERR_FILENO ) && !isatty( STDOUT_FILENO );
   for( long i = 0; i < lzip_index.members(); ++i )
@@ -671,8 +667,7 @@ int debug_reproduce_file( const std::string & input_filename,
     const long long msize = lzip_index.mblock( i ).size();
     if( !range.overlaps( mpos, msize ) ) continue;
     if( !fits_in_size_t( msize + page_size ) )		// mmap uses size_t
-      { show_file_error( filename,
-          "Input file contains member too large for mmap." ); return 1; }
+      { show_file_error( filename, large_member_msg ); return 1; }
     const long long dsize = lzip_index.dblock( i ).size();
     const unsigned dictionary_size = lzip_index.dictionary_size( i );
 
@@ -694,19 +689,20 @@ int debug_reproduce_file( const std::string & input_filename,
         {
         if( verbosity >= 0 )	// give a clue of the range being tested
           { std::printf( "Reproducing:    %s\nReference file: %s\nTesting "
-                         "sectors of size %llu at file positions %llu to %llu\n",
+                         "sectors of size %s at file positions %s to %s\n",
                          filename, reference_filename,
-                         std::min( (long long)sector_size, rm_end - sector_pos ),
-                         sector_pos, rm_end - 1 ); std::fflush( stdout ); }
+                         format_num3( std::min( (long long)sector_size,
+                         rm_end - sector_pos ) ), format_num3( sector_pos ),
+                         format_num3( rm_end - 1 ) ); std::fflush( stdout ); }
         md5_valid = true; compute_md5( mbuffer, msize, md5_digest_c );
         MD5SUM md5sum;
         LZ_mtester mtester( mbuffer, msize, dictionary_size, -1, &md5sum );
         if( mtester.test_member() != 0 || !mtester.finished() )
           {
           if( verbosity >= 0 )
-            { std::printf( "Member %ld of %ld already damaged (failure pos "
-                           "= %llu)\n", i + 1, lzip_index.members(),
-                           mpos + mtester.member_position() );
+            { std::printf( "Member %s of %s already damaged (failure pos = %s)\n",
+                           format_num3( i + 1 ), format_num3( lzip_index.members() ),
+                           format_num3( mpos + mtester.member_position() ) );
               std::fflush( stdout ); }
           munmap( mbuffer_base, msize + mpos_rem ); break;
           }
@@ -718,9 +714,7 @@ int debug_reproduce_file( const std::string & input_filename,
       // set mbuffer[sector] to 0
       std::memset( mbuffer + ( sector_pos - mpos ), 0, sector_sz );
       long size = 0;
-      uint8_t value = 0;
-      const long begin =
-        zeroed_sector_pos( mbuffer, msize, filename, &size, &value );
+      const long begin = bursted_pos( mbuffer, msize, filename, &size );
       if( begin < 0 ) return 2;
       MD5SUM md5sum;
       const int ret = reproduce_member( mbuffer, msize, dsize, lzip_name,
@@ -734,27 +728,31 @@ int debug_reproduce_file( const std::string & input_filename,
         if( md5_digest_d != new_digest )
           {
           ++failed_comparisons;
-          if( verbosity >= 0 )
-            std::printf( "Comparison failed at pos %llu\n", sector_pos );
+          if( verbosity >= 0 ) std::printf( "Comparison failed at pos %s\n",
+                               format_num3( sector_pos ) );
           }
         else if( !check_md5( mbuffer, msize, md5_digest_c ) )
           {
           ++alternative_reproductions;
-          if( verbosity >= 0 )
-            std::printf( "Alternative reproduction at pos %llu\n", sector_pos );
+          if( verbosity >= 0 ) std::printf( "Alternative reproduction at pos %s\n",
+                               format_num3( sector_pos ) );
           }
         else if( verbosity >= 0 )
-          std::printf( "Reproduction succeeded at pos %llu\n", sector_pos );
+          std::printf( "Reproduction succeeded at pos %s\n",
+                       format_num3( sector_pos ) );
         }
       else if( verbosity >= 0 )				// ret > 0
-        std::printf( "Unable to reproduce at pos %llu\n", sector_pos );
+        std::printf( "Unable to reproduce at pos %s\n",
+                     format_num3( sector_pos ) );
       if( verbosity >= 0 )
         {
         std::fflush( stdout );				// flush result line
         if( pct_enabled )				// show feedback
-          std::fprintf( stderr, "\r%ld sectors  %ld successes  %ld failcomp  "
-                        "%ld altrep  %3u%% done\r", positions, successes,
-                        failed_comparisons, alternative_reproductions,
+          std::fprintf( stderr, "\r%s sectors  %s successes  %s failcomp  "
+                        "%s altrep  %3u%% done\r",
+                        format_num3( positions ), format_num3( successes ),
+                        format_num3( failed_comparisons ),
+                        format_num3( alternative_reproductions ),
                         (unsigned)( ( positions * 100.0 ) / positions_to_test ) );
         }
       munmap( mbuffer_base, msize + mpos_rem );

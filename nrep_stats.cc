@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -30,6 +30,32 @@
 
 #include "lzip.h"
 #include "lzip_index.h"
+
+
+namespace {
+
+const char * format_num( unsigned long long num )
+  {
+  enum { buffers = 8, bufsize = 32 };
+  static char buffer[buffers][bufsize];	// circle of buffers for printf
+  static int current = 0;
+
+  unsigned long long den = 1;
+  const unsigned factor = 1000;
+  char * const buf = buffer[current++]; current %= buffers;
+  const char * const prefix = "kMGTPEZYRQ";
+  char p[2] = { 0, 0 };
+
+  for( int i = 0; num / den >= factor && den * factor > den && prefix[i]; ++i )
+    { den *= factor; *p = prefix[i]; }
+  if( num % den == 0 )
+    snprintf( buf, bufsize, "%llu %s", num / den, p );
+  else
+    snprintf( buf, bufsize, "%3.2f %s", (double)num / den, p );
+  return buf;
+  }
+
+} // end namespace
 
 
 /* Show how well the frequency of sequences of N repeated bytes in LZMA data
@@ -106,16 +132,17 @@ int print_nrep_stats( const std::vector< std::string > & filenames,
   else
     std::printf( "\nShowing repeated sequences of the byte value 0x%02X\n",
                  repeated_byte );
-  std::printf( "Total size of LZMA data: %llu bytes (%sBytes)\n",
-               lzma_size, format_num( lzma_size, 999 ) );
+  std::printf( "Total size of LZMA data: %s bytes (%sB)\n",
+               format_num3( lzma_size ), format_num( lzma_size ) );
   for( unsigned len = 2; len < len_vector.size(); ++len )
     if( len_vector[len] > 0 )
-      std::printf( "len %u found %lu times, 1 every %llu bytes "
-                   "(expected 1 every %sB)\n",
-                   len, len_vector[len], lzma_size / len_vector[len],
-                   format_num( 1ULL << ( 8 * ( len - count_all ) ), -1ULL, -1 ) );
+      std::printf( "len %u found %s times, 1 every %s bytes "
+                   "(expected 1 every %s B)\n",
+                   len, format_num3( len_vector[len] ),
+                   format_num3( lzma_size / len_vector[len] ),
+                   format_num3( 1ULL << ( 8 * ( len - count_all ) ) ) );
   if( best_name >= 0 )
-    std::printf( "Longest sequence found at position %lu of '%s'\n",
-                 best_pos, filenames[best_name].c_str() );
+    std::printf( "Longest sequence found at position %s of '%s'\n",
+                 format_num3( best_pos ), filenames[best_name].c_str() );
   return retval;
   }

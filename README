@@ -4,7 +4,9 @@ Description
 
 Lziprecover is a data recovery tool and decompressor for files in the lzip
 compressed data format (.lz). Lziprecover also provides Forward Error
-Correction (FEC) able to repair any kind of file.
+Correction files (.fec) that can be used to repair any kind of file, not
+only lzip files. A fec file can be used as recovery record for a tar.lz
+archive.
 
 Lziprecover can remove the damaged members from multimember files, for
 example multimember tar.lz archives.
@@ -14,11 +16,6 @@ decompresses the members containing the desired data.
 
 Lziprecover is not a replacement for regular backups, but a last line of
 defense for the case where the backups are also damaged.
-
-A nice feature of the lzip format is that a corrupt byte is easier to repair
-the nearer it is from the beginning of the file. Therefore, with the help of
-lziprecover, losing an entire archive just because of a corrupt byte near
-the beginning is a thing of the past.
 
 Compression may be good for long-term archiving. For compressible data,
 multiple compressed copies may provide redundancy in a more useful form and
@@ -57,7 +54,7 @@ Lziprecover uses Arg_parser for command-line argument parsing:
 http://www.nongnu.org/arg-parser/arg_parser.html
 
 
-Copyright (C) 2009-2025 Antonio Diaz Diaz.
+Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
 This file is free documentation: you have unlimited permission to copy,
 distribute, and modify it.

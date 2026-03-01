@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2023-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2023-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ struct Galois8_table		// addition/subtraction is exclusive or
   uint8_t * log, * ilog, * mul_table;
 
   Galois8_table() : log( 0 ), ilog( 0 ), mul_table( 0 ) {}
-//  ~Galois8_table() { delete[] mul_table; delete[] ilog; delete[] log; }
+  ~Galois8_table() { delete[] mul_table; delete[] ilog; delete[] log; }
 
   void init()	// fill log, inverse log, and multiplication tables
     {
@@ -210,11 +210,11 @@ void rs8_encode( const uint8_t * const buffer, const uint8_t * const lastbuf,
   }
 
 
-void rs8_decode( uint8_t * const buffer, uint8_t * const lastbuf,
+void rs8_decode( const uint8_t * const buffer, const uint8_t * const lastbuf,
                  const std::vector< unsigned > & bb_vector,
                  const std::vector< unsigned > & fbn_vector,
-                 uint8_t * const fecbuf, const unsigned long fbs,
-                 const unsigned k )
+                 uint8_t * const fecbuf, uint8_t * const dstbuf,
+                 const unsigned long fbs, const unsigned k )
   {
   gf.init();
   const unsigned bad_blocks = bb_vector.size();
@@ -232,9 +232,7 @@ void rs8_decode( uint8_t * const buffer, uint8_t * const lastbuf,
   const uint8_t * const dec_matrix = init_dec_matrix( bb_vector, fbn_vector );
   for( unsigned col = 0; col < bad_blocks; ++col )	// solve
     {
-    const unsigned di = bb_vector[col];
-    uint8_t * const dst =
-      ( di < k - (lastbuf != 0) ) ? buffer + di * fbs : lastbuf;
+    uint8_t * const dst = dstbuf + col * fbs;
     std::memset( dst, 0, fbs );
     const uint8_t * const dec_row = dec_matrix + col * bad_blocks;
     for( unsigned row = 0; row < bad_blocks; ++row )

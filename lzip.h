@@ -1,5 +1,5 @@
-/* Lziprecover - Data recovery tool for the lzip format
-   Copyright (C) 2009-2025 Antonio Diaz Diaz.
+/* Lziprecover - Data recovery tool
+   Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -165,8 +165,6 @@ public:
       data[n] = c;
       }
     }
-
-  uint32_t operator[]( const uint8_t byte ) const { return data[byte]; }
 
   void update_byte( uint32_t & crc, const uint8_t byte ) const
     { crc = data[(crc^byte)&0xFF] ^ ( crc >> 8 ); }
@@ -427,9 +425,11 @@ inline const char * printable_name( const std::string & filename,
 const char * const bad_magic_msg = "Bad magic number (file not in lzip format).";
 const char * const bad_dict_msg = "Invalid dictionary size in member header.";
 const char * const corrupt_mm_msg = "Corrupt header in multimember file.";
-const char * const empty_msg = "Empty member not allowed.";
+const char * const empty_file_msg = "Input file is empty.";
+const char * const empty_member_msg = "Empty member not allowed.";
 const char * const mmap_msg = "Can't mmap";
 const char * const nonzero_msg = "Nonzero first LZMA byte.";
+const char * const seek_msg = "Input file is not seekable";
 const char * const short_file_msg = "Input file is truncated.";
 const char * const trailing_msg = "Trailing data not allowed.";
 const char * const wr_err_msg = "Write error";
@@ -463,6 +463,9 @@ long readblock( const int fd, uint8_t * const buf, const long size );
 long writeblock( const int fd, const uint8_t * const buf, const long size );
 
 // defined in dump_remove.cc
+int append_tdata( const std::vector< std::string > & filenames,
+                  const std::string & append_filename,
+                  const Cl_options & cl_opts, const bool force );
 int dump_members( const std::vector< std::string > & filenames,
                   const std::string & default_output_filename,
                   const Cl_options & cl_opts, const Member_list & member_list,
@@ -531,9 +534,6 @@ int print_nrep_stats( const std::vector< std::string > & filenames,
                       const Cl_options & cl_opts, const int repeated_byte );
 
 // defined in range_dec.cc
-const char * format_num( unsigned long long num,
-                         unsigned long long limit = -1ULL,
-                         const int set_prefix = 0 );
 int range_decompress( const std::string & input_filename,
                       const std::string & default_output_filename,
                       const Cl_options & cl_opts, Block range,

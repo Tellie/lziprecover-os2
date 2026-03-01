@@ -1,6 +1,6 @@
 #! /bin/sh
-# check script for Lziprecover - Data recovery tool for the lzip format
-# Copyright (C) 2009-2025 Antonio Diaz Diaz.
+# check script for Lziprecover - Data recovery tool
+# Copyright (C) 2009-2026 Antonio Diaz Diaz.
 #
 # This script is free software: you have unlimited permission
 # to copy, distribute, and modify it.
@@ -24,6 +24,9 @@ fi
 	echo "Try bash -c \"$0 $1 $2\""
 	exit 1
 	}
+if [ -z "${LZIP_NAME}" ] ; then LZIP_NAME=lzip ; fi
+/bin/sh -c "${LZIP_NAME} --version" > /dev/null 2>&1 ||
+	{ echo "$0: lzip is needed to run the tests" ; exit 1 ; }
 
 if [ -d tmp ] ; then rm -rf tmp ; fi
 mkdir tmp
@@ -106,12 +109,6 @@ test_failed() { fail=1 ; printf " $1" ; [ -z "$2" ] || printf "($2)" ; }
 
 printf "testing lziprecover-%s..." "$2"
 
-"${LZIPRECOVER}" -q --nrep-stats=0N "${in_lz}"
-[ $? = 1 ] || test_failed $LINENO
-for i in 0 255 0kB 0KiB 0M 0G 0T 0P 0E 0Z 0Y 0R 0Q ; do
-	"${LZIPRECOVER}" --nrep-stats=$i "${in_lz}" > /dev/null ||
-	  test_failed $LINENO $i
-done
 "${LZIP}" -lq in
 [ $? = 2 ] || test_failed $LINENO
 "${LZIP}" -tq in
@@ -160,6 +157,12 @@ printf "LZIP\001-.............................." | "${LZIP}" -t 2> /dev/null
 printf "LZIP\002-.............................." | "${LZIP}" -t 2> /dev/null
 printf "LZIP\001+.............................." | "${LZIP}" -t 2> /dev/null
 
+"${LZIPRECOVER}" -q --nrep-stats=0N "${in_lz}"
+[ $? = 1 ] || test_failed $LINENO
+for i in 0 0_000_000k 0x40 0300 255 0kB 0KiB 0M 0G 0T 0P 0E 0Z 0Y 0R 0Q ; do
+	"${LZIPRECOVER}" --nrep-stats=$i "${in_lz}" > /dev/null ||
+	  test_failed $LINENO $i
+done
 "${LZIPRECOVER}" -eq "${bad6_lz}"
 [ $? = 1 ] || test_failed $LINENO
 "${LZIPRECOVER}" -mq "${bad1_lz}"
@@ -395,7 +398,6 @@ rm -rf a || framework_failure
 [ $? = 1 ] || test_failed $LINENO
 [ ! -e a ] || test_failed $LINENO
 
-if [ -z "${LZIP_NAME}" ] ; then LZIP_NAME=lzip ; fi
 touch empty em || framework_failure
 "${LZIP_NAME}" -0 em || test_failed $LINENO
 "${LZIP}" -l em.lz > /dev/null || test_failed $LINENO
@@ -414,7 +416,7 @@ cmp in out || test_failed $LINENO
 cat em.lz "${fox_lz}" em.lz "${fox_lz}" em.lz em.lz "${fox_lz}" em.lz > \
     f3_em.lz || framework_failure
 "${LZIPRECOVER}" -D ,18000 "${in_lz}" > out || test_failed $LINENO
-"${LZIPRECOVER}" -D 18000 "${in_lz}" >> out || test_failed $LINENO
+"${LZIPRECOVER}" -D 18_000 "${in_lz}" >> out || test_failed $LINENO
 cmp in out || test_failed $LINENO
 "${LZIPRECOVER}" -D 21636-22033 -fo out "${in_lz}" || test_failed $LINENO
 cmp "${inD}" out || test_failed $LINENO
@@ -603,7 +605,7 @@ for i in "${f6s1_lz}" "${f6s2_lz}" ; do
 done
 for i in "${f6s3_lz}" "${f6s4_lz}" "${f6s5_lz}" "${f6s6_lz}" ; do
 	lines=`"${LZIP}" -lvv "$i" | wc -l || test_failed $LINENO "$i"`
-	[ "${lines}" -eq 9 ] || test_failed $LINENO "$i ${lines}"
+	[ "${lines}" -eq 10 ] || test_failed $LINENO "$i ${lines}"
 done
 
 cp "${in_lz}" ingin.lz || framework_failure
@@ -700,6 +702,10 @@ rm -f out.tlz out_fixed.lz out_fixed.tar.lz out_fixed.tlz ||
 
 printf "\ntesting --fec..."
 
+"${LZIPRECOVER}" -q -Ft -r . --fec-file="${in_lz}".fec
+[ $? = 1 ] || test_failed $LINENO
+"${LZIPRECOVER}" -q -Ft -r "${in_lz}" --fec-file="${in_lz}".fec
+[ $? = 1 ] || test_failed $LINENO
 "${LZIPRECOVER}" -Ft "${in_lz}" || test_failed $LINENO
 "${LZIPRECOVER}" -Fc "${in_lz}" -o fecfile.fec || test_failed $LINENO
 cmp "${in_lz}".fec fecfile.fec || test_failed $LINENO
@@ -707,11 +713,37 @@ cmp "${in_lz}".fec fecfile.fec || test_failed $LINENO
 "${LZIPRECOVER}" -Fc -cn4 "${in_lz}" | cmp fecfile.fec - || test_failed $LINENO
 "${LZIPRECOVER}" -Fc -c --gf16 "${in_lz}" | cmp "${in_lz}".fec16 - ||
 	test_failed $LINENO
+
+cp "${in_lz}" in.lz || framework_failure
+"${LZIPRECOVER}" --append=in in.lz || test_failed $LINENO
+cat "${in_lz}" in | cmp in.lz - || test_failed $LINENO
+"${LZIP}" -cd in.lz | cmp in - || test_failed $LINENO
+"${LZIPRECOVER}" --dump=tdata in.lz | cmp in - || test_failed $LINENO
+cp "${in_lz}" in.lz || framework_failure
+"${LZIPRECOVER}" --append="${fox_lz}" in.lz || test_failed $LINENO
+cat "${in_lz}" "${fox_lz}" | cmp -s in.lz - && test_failed $LINENO
+"${LZIP}" -cd in.lz | cmp in - || test_failed $LINENO
+"${LZIPRECOVER}" --dump=tdata in.lz | cmp "${fox_lz}" - || test_failed $LINENO
+
+cp "${in_lz}" in.lz || framework_failure
+"${LZIPRECOVER}" -Fc -c in.lz | "${LZIPRECOVER}" --append=- in.lz ||
+	test_failed $LINENO
+cat "${in_lz}" fecfile.fec | cmp -s in.lz - && test_failed $LINENO
+"${LZIPRECOVER}" --dump=tdata in.lz | cmp fecfile.fec - || test_failed $LINENO
+"${LZIPRECOVER}" --dump=tdata in.lz | "${LZIPRECOVER}" -q -Ft --fec-file=- \
+	in.lz || test_failed $LINENO
+"${LZIPRECOVER}" --dump=tdata in.lz | "${LZIPRECOVER}" -q -Fr --fec-file=- \
+	in.lz -o fixed.lz || test_failed $LINENO
+cmp "${in_lz}" fixed.lz || test_failed $LINENO
+"${LZIPRECOVER}" --remove=tdata in.lz || test_failed $LINENO
+cmp "${in_lz}" in.lz || test_failed $LINENO
+rm -f in.lz fixed.lz || framework_failure
+
 for i in "${bad1_lz}" "${bad2_lz}" "${bad3_lz}" "${bad4_lz}" "${bad5_lz}" \
          "${bad6_lz}" "${bad7_lz}" "${bad8_lz}" "${bad9_lz}" ; do
   "${LZIPRECOVER}" -q -Fr --fec-file=fecfile.fec "$i" -o fixed.lz ||
     test_failed $LINENO "$i"
-  cmp "${in_lz}" "fixed.lz" || test_failed $LINENO "$i"
+  cmp "${in_lz}" fixed.lz || test_failed $LINENO "$i"
   rm -f fixed.lz || framework_failure
 done
 "${LZIPRECOVER}" -Fc "${in_lz}" -o fec/ || test_failed $LINENO
@@ -903,8 +935,7 @@ rm -f bad345.lz bad453.lz bad534.lz out4.lz || framework_failure
 
 printf "\ntesting --reproduce..."
 
-if /bin/sh -c "${LZIP_NAME} -s18KiB" < in > out 2> /dev/null &&
-   cmp "${in_lz}" out ; then
+if ${LZIP_NAME} -qs18KiB < in > out && cmp "${in_lz}" out ; then
   rm -f out || framework_failure
   "${LZIPRECOVER}" --reproduce --lzip-name="${LZIP_NAME}" -o out \
     --reference-file=foo "${in_lz}" || test_failed $LINENO "${LZIP_NAME}"
@@ -966,9 +997,9 @@ if /bin/sh -c "${LZIP_NAME} -s18KiB" < in > out 2> /dev/null &&
     -q --reference-file=in "${in_lz}" || test_failed $LINENO "${LZIP_NAME}"
 else
   printf "warning: skipping --reproduce test: "
-  printf "${LZIP_NAME} not found, not the right compressor, not the right version, or this is not a POSIX system.\n"
-  if ${LZIP_NAME} -V > /dev/null 2>&1 ; then ${LZIP_NAME} -V | sed -e 1q
-  else printf "Try 'make LZIP_NAME=<name_of_lzip_executable> check'.\n" ; fi
+  printf "${LZIP_NAME} not the right compressor, not the right version, or this is not a POSIX system.\n"
+  ${LZIP_NAME} -V | sed -e 1q
+  printf "Try 'make LZIP_NAME=<name_of_lzip_executable> check'.\n"
 fi
 rm -f in4.lz || framework_failure
 

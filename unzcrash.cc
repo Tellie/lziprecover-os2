@@ -1,6 +1,6 @@
 /* Unzcrash - Tests robustness of decompressors to corrupted data.
    Inspired by unzcrash.c from Julian Seward's bzip2.
-   Copyright (C) 2008-2025 Antonio Diaz Diaz.
+   Copyright (C) 2008-2026 Antonio Diaz Diaz.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -57,54 +57,57 @@ const char * invocation_name = program_name;		// default value
 
 void show_help()
   {
-  std::printf( "Unzcrash tests the robustness of decompressors to corrupted data.\n"
-               "\nBy default, unzcrash reads the file specified and then repeatedly\n"
-               "decompresses it, increasing 256 times each byte of the compressed data, so\n"
-               "as to test all possible one-byte errors. Note that it may take years or even\n"
-               "centuries to test all possible one-byte errors in a large file (tens of MB).\n"
-               "\nIf the option '--block' is given, unzcrash reads the file specified and\n"
-               "then repeatedly decompresses it, setting all bytes in each successive block\n"
-               "to the value given, so as to test all possible full sector errors.\n"
-               "\nIf the option '--truncate' is given, unzcrash reads the file specified\n"
-               "and then repeatedly decompresses it, truncating the file to increasing\n"
-               "lengths, so as to test all possible truncation points.\n"
-               "\nNone of the three test modes described above should cause any invalid memory\n"
-               "accesses. If any of them does, please, report it as a bug to the maintainers\n"
-               "of the decompressor being tested.\n"
-               "\nIf the decompressor returns with zero status, unzcrash compares the output\n"
-               "of the decompressor for the original and corrupt files. If the outputs\n"
-               "differ, it means that the decompressor returned a false negative; it failed\n"
-               "to recognize the corruption and produced garbage output. The only exception\n"
-               "is when a multimember file is truncated just after the last byte of a\n"
-               "member, producing a shorter but valid compressed file. Except in this latter\n"
-               "case, please, report any false negative as a bug.\n"
-               "\nIn order to compare the outputs, unzcrash needs a 'zcmp' program able to\n"
-               "understand the format being tested. For example the zcmp provided by zutils.\n"
-               "Use '--zcmp=false' to disable comparisons.\n"
-               "\nUsage: %s [options] 'lzip -t' file.lz\n", invocation_name );
-  std::printf( "\nOptions:\n"
-               "  -h, --help                    display this help and exit\n"
-               "  -V, --version                 output version information and exit\n"
-               "  -b, --bits=<range>            test N-bit errors instead of full byte\n"
-               "  -B, --block[=<size>][,<val>]  test blocks of given size [512,0]\n"
-               "  -d, --delta=<n>               test one byte/block/truncation every n bytes\n"
-               "  -e, --set-byte=<pos>,<val>    set byte at position <pos> to value <val>\n"
-               "  -n, --no-check                skip initial test of file.lz and zcmp\n"
-               "  -p, --position=<bytes>        first byte position to test [default 0]\n"
-               "  -q, --quiet                   suppress all messages\n"
-               "  -s, --size=<bytes>            number of byte positions to test [all]\n"
-               "  -t, --truncate                test decompression of truncated file\n"
-               "  -v, --verbose                 be verbose (a 2nd -v gives more)\n"
-               "  -z, --zcmp=<command>          set zcmp command name and options [zcmp]\n"
-               "Examples of <range>:  1  1,2,3  1-4  1,3-5,8  1-3,5-8\n"
-               "A negative position is relative to the end of file.\n"
-               "A negative size is relative to the rest of the file.\n"
-               "\nExit status: 0 for a normal exit, 1 for environmental problems\n"
-               "(file not found, invalid command-line options, I/O errors, etc), 2 to\n"
-               "indicate a corrupt or invalid input file, 3 for an internal consistency\n"
-               "error (e.g., bug) which caused unzcrash to panic.\n"
-               "\nReport bugs to lzip-bug@nongnu.org\n"
-               "Lziprecover home page: http://www.nongnu.org/lzip/lziprecover.html\n" );
+  std::fputs(
+    "Unzcrash tests the robustness of decompressors to corrupted data.\n"
+    "\nBy default, unzcrash reads the file specified and then repeatedly\n"
+    "decompresses it, increasing 256 times each byte of the compressed data, so\n"
+    "as to test all possible one-byte errors. Note that it may take years or even\n"
+    "centuries to test all possible one-byte errors in a large file (tens of MB).\n"
+    "\nIf the option '--block' is given, unzcrash reads the file specified and\n"
+    "then repeatedly decompresses it, setting all bytes in each successive block\n"
+    "to the value given, so as to test all possible full sector errors.\n"
+    "\nIf the option '--truncate' is given, unzcrash reads the file specified\n"
+    "and then repeatedly decompresses it, truncating the file to increasing\n"
+    "lengths, so as to test all possible truncation points.\n"
+    "\nNone of the three test modes described above should cause any invalid memory\n"
+    "accesses. If any of them does, please, report it as a bug to the maintainers\n"
+    "of the decompressor being tested.\n"
+    "\nIf the decompressor returns with zero status, unzcrash compares the output\n"
+    "of the decompressor for the original and corrupt files. If the outputs\n"
+    "differ, it means that the decompressor returned a false negative; it failed\n"
+    "to recognize the corruption and produced garbage output. The only exception\n"
+    "is when a multimember file is truncated just after the last byte of a\n"
+    "member, producing a shorter but valid compressed file. Except in this latter\n"
+    "case, please, report any false negative as a bug.\n"
+    "\nIn order to compare the outputs, unzcrash needs a 'zcmp' program able to\n"
+    "understand the format being tested. For example the zcmp provided by zutils.\n"
+    "Use '--zcmp=false' to disable comparisons.\n", stdout );
+  std::printf( "\nUsage: %s [options] 'lzip -t' file.lz\n", invocation_name );
+  std::fputs(
+    "\nOptions:\n"
+    "  -h, --help                    display this help and exit\n"
+    "  -V, --version                 output version information and exit\n"
+    "  -b, --bits=<range>            test N-bit errors instead of full byte\n"
+    "  -B, --block[=<size>][,<val>]  test blocks of given size [512,0]\n"
+    "  -d, --delta=<n>               test one byte/block/truncation every n bytes\n"
+    "  -e, --set-byte=<pos>,<val>    set byte at position <pos> to value <val>\n"
+    "  -n, --no-check                skip initial test of file.lz and zcmp\n"
+    "  -p, --position=<bytes>        first byte position to test [default 0]\n"
+    "  -q, --quiet                   suppress all messages\n"
+    "  -s, --size=<bytes>            number of byte positions to test [all]\n"
+    "  -t, --truncate                test decompression of truncated file\n"
+    "  -v, --verbose                 be verbose (a 2nd -v gives more)\n"
+    "  -z, --zcmp=<command>          set zcmp command name and options [zcmp]\n"
+    "Examples of <range>:  1  1,2,3  1-4  1,3-5,8  1-3,5-8\n"
+    "A negative position is relative to the end of file.\n"
+    "A negative size is relative to the rest of the file.\n"
+    "\n*Exit status*\n"
+    "0 for a normal exit, 1 for environmental problems (file not found, invalid\n"
+    "command-line options, I/O errors, etc), 2 to indicate a corrupt or invalid\n"
+    "input file, 3 for an internal consistency error (e.g., bug) which caused\n"
+    "unzcrash to panic.\n"
+    "\nReport bugs to lzip-bug@nongnu.org\n"
+    "Lziprecover home page: http://www.nongnu.org/lzip/lziprecover.html\n", stdout );
   }
 
 } // end namespace
@@ -118,11 +121,9 @@ void parse_block( const char * const arg, const char * const option_name,
   {
   const char * tail = arg;
 
-  if( tail[0] != ',' )
-    size = getnum( arg, option_name, 0, 1, INT_MAX, &tail );
-  if( tail[0] == ',' )
-    value = getnum( tail + 1, option_name, 0, 0, 255 );
-  else if( tail[0] )
+  if( *tail != ',' ) size = getnum( arg, option_name, 0, 1, INT_MAX, &tail );
+  if( *tail == ',' ) value = getnum( tail + 1, option_name, 0, 0, 255 );
+  else if( *tail )
     { show_option_error( arg, "Missing comma between <size> and <value> in",
                          option_name ); std::exit( 1 ); }
   }
@@ -140,7 +141,8 @@ uint8_t * read_file( const char * const filename, long * const file_sizep )
 
   long buffer_size = 65536;
   uint8_t * buffer = (uint8_t *)std::malloc( buffer_size );
-  if( !buffer ) { show_file_error( filename, mem_msg ); return 0; }
+  if( !buffer )
+    { show_file_error( filename, mem_msg ); std::fclose( f ); return 0; }
   long file_size = std::fread( buffer, 1, buffer_size, f );
   while( file_size >= buffer_size || ( !std::ferror( f ) && !std::feof( f ) ) )
     {
@@ -148,18 +150,18 @@ uint8_t * read_file( const char * const filename, long * const file_sizep )
       {
       if( buffer_size >= LONG_MAX )
         { show_file_error( filename, large_file_msg );
-          std::free( buffer ); return 0; }
+          std::free( buffer ); std::fclose( f ); return 0; }
       buffer_size = (buffer_size <= LONG_MAX / 2) ? 2 * buffer_size : LONG_MAX;
       uint8_t * const tmp = (uint8_t *)std::realloc( buffer, buffer_size );
-      if( !tmp )
-        { show_file_error( filename, mem_msg ); std::free( buffer ); return 0; }
+      if( !tmp ) { show_file_error( filename, mem_msg ); std::free( buffer );
+                   std::fclose( f ); return 0; }
       buffer = tmp;
       }
     file_size += std::fread( buffer + file_size, 1, buffer_size - file_size, f );
     }
   if( std::ferror( f ) || !std::feof( f ) )
-    { show_file_error( filename, read_error_msg, errno );
-      std::free( buffer ); return 0; }
+    { show_file_error( filename, rd_err_msg, errno );
+      std::free( buffer ); std::fclose( f ); return 0; }
   if( std::fclose( f ) != 0 )
     { show_file_error( filename, "Error closing input file", errno );
       std::free( buffer ); return 0; }
@@ -398,7 +400,7 @@ int main( const int argc, const char * const argv[] )
     switch( code )
       {
       case 'b': bits.parse_bs( arg, pn ); program_mode = m_byte; break;
-      case 'B': if( arg[0] ) parse_block( arg, pn, block_size, block_value );
+      case 'B': if( *arg ) parse_block( arg, pn, block_size, block_value );
                 program_mode = m_block; break;
       case 'd': delta = getnum( arg, pn, block_size, 1, INT_MAX ); break;
       case 'e': bad_byte.parse_bb( arg, pn ); break;
@@ -504,11 +506,13 @@ int main( const int argc, const char * const argv[] )
                          bad_byte.option_name ); return 1; }
   if( bad_byte.pos >= 0 )
     buffer[bad_byte.pos] = bad_byte( buffer[bad_byte.pos] );
-  long positions = 0, decompressions = 0, successes = 0, failed_comparisons = 0;
+  unsigned long positions = 0, decompressions = 0, successes = 0,
+                failed_comparisons = 0;
   if( program_mode == m_truncate )
     for( long i = pos; i < end; i += std::min( delta, end - i ) )
       {
-      if( verbosity >= 1 ) std::fprintf( stderr, "length %ld\n", i );
+      if( verbosity >= 1 )
+        std::fprintf( stderr, "length %s\n", format_num3( i ) );
       ++positions; ++decompressions;
       const int ret = fork_and_feed( buffer, i, command_argv );
       if( ret < 0 ) return 1;
@@ -516,7 +520,7 @@ int main( const int argc, const char * const argv[] )
         {
         ++successes;
         if( verbosity >= 0 )
-          std::fprintf( stderr, "length %ld passed the test\n", i );
+          std::fprintf( stderr, "length %s passed the test\n", format_num3( i ) );
         if( zcmp_command.size() )
           {
           const int ret = fork_and_feed( buffer, i, zcmp_argv );
@@ -524,8 +528,8 @@ int main( const int argc, const char * const argv[] )
           if( ret > 0 )
             {
             ++failed_comparisons;
-            if( verbosity >= 0 )
-              std::fprintf( stderr, "length %ld comparison failed\n", i );
+            if( verbosity >= 0 ) std::fprintf( stderr,
+              "length %s comparison failed\n", format_num3( i ) );
             }
           }
         }
@@ -537,7 +541,8 @@ int main( const int argc, const char * const argv[] )
     for( long i = pos; i < end; i += std::min( delta, end - i ) )
       {
       const long size = std::min( block_size, file_size - i );
-      if( verbosity >= 1 ) std::fprintf( stderr, "block %ld,%ld\n", i, size );
+      if( verbosity >= 1 ) std::fprintf( stderr, "block %s,%s\n",
+                           format_num3( i ), format_num3( size ) );
       ++positions; ++decompressions;
       std::memcpy( block, buffer + i, size );
       std::memset( buffer + i, block_value, size );
@@ -547,7 +552,8 @@ int main( const int argc, const char * const argv[] )
         {
         ++successes;
         if( verbosity >= 0 )
-          std::fprintf( stderr, "block %ld,%ld passed the test\n", i, size );
+          std::fprintf( stderr, "block %s,%s passed the test\n",
+                        format_num3( i ), format_num3( size ) );
         if( zcmp_command.size() )
           {
           const int ret = fork_and_feed( buffer, file_size, zcmp_argv );
@@ -556,7 +562,8 @@ int main( const int argc, const char * const argv[] )
             {
             ++failed_comparisons;
             if( verbosity >= 0 )
-              std::fprintf( stderr, "block %ld,%ld comparison failed\n", i, size );
+              std::fprintf( stderr, "block %s,%s comparison failed\n",
+                            format_num3( i ), format_num3( size ) );
             }
           }
         }
@@ -569,7 +576,8 @@ int main( const int argc, const char * const argv[] )
     if( verbosity >= 1 ) bits.print();
     for( long i = pos; i < end; i += std::min( delta, end - i ) )
       {
-      if( verbosity >= 1 ) std::fprintf( stderr, "byte %ld\n", i );
+      if( verbosity >= 1 )
+        std::fprintf( stderr, "byte %s\n", format_num3( i ) );
       ++positions;
       const uint8_t byte = buffer[i];
       for( int j = 1; j < 256; ++j )
@@ -590,7 +598,8 @@ int main( const int argc, const char * const argv[] )
               { if( verbosity < 2 )	// else already printed above
                   std::fprintf( stderr, "0x%02X (0x%02X+0x%02X) ",
                                 buffer[i], byte, j );
-                std::fprintf( stderr, "byte %ld passed the test\n", i ); }
+                std::fprintf( stderr, "byte %s passed the test\n",
+                              format_num3( i ) ); }
             if( zcmp_command.size() )
               {
               const int ret = fork_and_feed( buffer, file_size, zcmp_argv );
@@ -598,8 +607,8 @@ int main( const int argc, const char * const argv[] )
               if( ret > 0 )
                 {
                 ++failed_comparisons;
-                if( verbosity >= 0 )
-                  std::fprintf( stderr, "byte %ld comparison failed\n", i );
+                if( verbosity >= 0 ) std::fprintf( stderr,
+                  "byte %s comparison failed\n", format_num3( i ) );
                 }
               }
             }

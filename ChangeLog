@@ -1,3 +1,28 @@
+2026-02-08  Antonio Diaz Diaz  <antonio@gnu.org>
+
+	* Version 1.26 released.
+	* New option '--append'.
+	* byte_repair.cc (debug_decompress): Show member-relative positions.
+	* decoder.cc (check_trailer): With -vv print sizes, not ratios.
+	* fec_create.cc (write_fec): If input file is larger than RAM / 2,
+	  create all packets concurrently to read the file just once.
+	  (Reported by Phako).
+	  (fec_create): Accept non-regular protected file if --force.
+	* fec_repair.cc: Test and repair protected files larger than RAM.
+	  (read_fecfile): Return early if no fec_magic found.
+	  (Fec_index): With -i accept a fec file without fec packets.
+	  (fec_df): New function.
+	  (check_prodata): 'size_dif > 0' is not mismatch.
+	* list.cc (list_files): Print size of tdata below sizes of members.
+	  With -vv print a blank line between files.
+	* lzip_index.cc (skip_box): New function.
+	* main.cc (insert_fixed) [!append_lz]: Insert '_fixed' before '.tar'.
+	  (show_help): Print "*Exit status*" for section in man page.
+	* main_common.cc (getnum): Accept underscore separators ('_').
+	* Print large numbers with underscore separators ('_').
+	* reproduce.cc (bursted_pos): Detect more than one burst.
+	* lziprecover.texi: Document how to use a fec recovery record.
+
 2025-01-08  Antonio Diaz Diaz  <antonio@gnu.org>
 
 	* Version 1.25 released.
@@ -9,6 +34,7 @@
 	* Rename option '--clear-marking' to '--nonzero-repair'.
 	* Remove options '--empty-error' and '--marking-error'.
 	* decoder.cc (decode_member): Remove support for Sync Flush marker.
+	* list.cc (list_files): Detect write error on stdout.
 	* merge.cc (copy_file): Add name arguments, use 'show_file_error'.
 	* lziprecover.texi: New chapter 'Syntax of command-line arguments'.
 	* check.sh: Use 'cp' instead of 'cat'.
@@ -255,7 +281,7 @@
 	* unzcrash.cc: Test all 1-byte errors.
 
 
-Copyright (C) 2009-2025 Antonio Diaz Diaz.
+Copyright (C) 2009-2026 Antonio Diaz Diaz.
 
 This file is a collection of facts, and thus it is not copyrightable, but just
 in case, you have unlimited permission to copy, distribute, and modify it.
